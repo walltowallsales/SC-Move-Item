@@ -60,6 +60,8 @@ function normalizeMasterProduct(p) {
     title: p.title || '',
     image: p.primary_image || p.images?.[0]?.large_url || p.images?.[0]?.image_url || '',
     quantity_available: Number(p.quantity_available || 0),
+    item_remarks: p.item_remarks || '',
+    notes_product_id: p.id,
     locations: (p.inventory_locations || []).map(x => ({
       id: x.id || '',
       location: x.location || '',
@@ -79,6 +81,8 @@ function normalizeLegacyProduct(p) {
     title: p.title || '',
     image: p.product_images?.[0]?.large_image_url || p.product_images?.[0]?.original_image_url || '',
     quantity_available: Number(p.quantity_available || 0),
+    item_remarks: p.item_remarks || '',
+    notes_product_id: p.id,
     locations: (p.inventory_locations || []).map(x => ({
       id: x.id || '',
       location: x.location || '',
@@ -87,6 +91,37 @@ function normalizeLegacyProduct(p) {
       delete_if_empty: x.delete_if_empty !== false
     }))
   };
+}
+
+async function getLegacyProductForNotes(code) {
+  const product = await lookupLegacy(code);
+  return product ? {
+    id: product.id,
+    item_remarks: product.item_remarks || ''
+  } : null;
+}
+
+async function prependPreviousLocation(notesProductId, oldLocation, knownRemarks = '') {
+  if (!notesProductId) {
+    return { updated: false, warning: 'No standard SellerChamp listing was found for updating Notes.' };
+  }
+
+  let currentRemarks = String(knownRemarks || '');
+  try {
+    const detail = await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`);
+    const product = detail.product || detail;
+    if (product && typeof product.item_remarks === 'string') currentRemarks = product.item_remarks;
+  } catch (e) {
+    // The lookup response already supplied remarks; use those if detail fetch is unavailable.
+  }
+
+  const prefix = `Previously on ${String(oldLocation).trim()} - `;
+  const newRemarks = prefix + currentRemarks;
+  await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ product: { item_remarks: newRemarks } })
+  });
+  return { updated: true, item_remarks: newRemarks };
 }
 
 async function lookupCatalog(code) {
@@ -154,7 +189,16 @@ app.get('/api/lookup', async (req, res) => {
   if (!code) return res.status(400).json({ error: 'Enter or scan an SKU/barcode.' });
   try {
     const catalog = await lookupCatalog(code);
-    if (catalog) return res.json({ product: catalog });
+    if (catalog) {
+      try {
+        const notesProduct = await getLegacyProductForNotes(code);
+        if (notesProduct) {
+          catalog.notes_product_id = notesProduct.id;
+          catalog.item_remarks = notesProduct.item_remarks || '';
+        }
+      } catch {}
+      return res.json({ product: catalog });
+    }
     const legacy = await lookupLegacy(code);
     if (legacy) return res.json({ product: legacy });
     res.status(404).json({ error: `No SellerChamp item matched “${code}”.` });
@@ -164,7 +208,7 @@ app.get('/api/lookup', async (req, res) => {
 });
 
 app.post('/api/move', async (req, res) => {
-  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId } = req.body || {};
+  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId, notesProductId, currentRemarks } = req.body || {};
   if (!productId || !fromLocation || !toLocation) return res.status(400).json({ error: 'Product, source location, and destination location are required.' });
   if (String(fromLocation).trim().toLowerCase() === String(toLocation).trim().toLowerCase()) return res.status(400).json({ error: 'The new location is the same as the current location.' });
 
@@ -185,7 +229,14 @@ app.post('/api/move', async (req, res) => {
       const data = await scFetch('/api/master_product_inventory_locations/update_quantities', {
         method: 'POST', body: JSON.stringify(body)
       });
-      return res.json({ ok: true, mode: 'catalog', result: data });
+
+      let notes = { updated: false };
+      try {
+        notes = await prependPreviousLocation(notesProductId, fromLocation, currentRemarks);
+      } catch (noteError) {
+        notes = { updated: false, warning: 'Inventory moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
+      }
+      return res.json({ ok: true, mode: 'catalog', result: data, notes });
     }
 
     if (mode === 'legacy') {
@@ -207,7 +258,14 @@ app.post('/api/move', async (req, res) => {
       const data = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations/${encodeURIComponent(source.id)}`, {
         method: 'PUT', body: JSON.stringify(payload)
       });
-      return res.json({ ok: true, mode: 'legacy', result: data });
+
+      let notes = { updated: false };
+      try {
+        notes = await prependPreviousLocation(notesProductId || productId, fromLocation, currentRemarks);
+      } catch (noteError) {
+        notes = { updated: false, warning: 'Location moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
+      }
+      return res.json({ ok: true, mode: 'legacy', result: data, notes });
     }
 
     res.status(400).json({ error: 'Unknown inventory mode. Look the item up again.' });

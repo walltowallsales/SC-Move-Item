@@ -55,3 +55,7 @@ The server connects to `https://app.sellerchamp.com` and sends your token in Sel
 
 ## iPhone camera scanning
 Version 1.1 uses ZXing in the browser for camera barcode scanning, including iPhone Safari. The Render site must be served over HTTPS (Render provides this automatically). Camera permission must be allowed in Safari. Bluetooth/USB scanners continue to work as keyboard input.
+
+
+## Relocation history
+On each successful move, the app prepends `Previously on OLD-LOCATION - ` to SellerChamp's `item_remarks` field without replacing the existing remarks. Full-quantity moves relocate the stock from the old bin to the new bin; partial Catalog Sync transfers leave any remaining quantity at the source bin.

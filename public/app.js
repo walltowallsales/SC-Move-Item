@@ -84,9 +84,10 @@ async function moveItem(){
   if(!all && (!Number.isInteger(qty)||qty<1||qty>source.quantity_available)) return toast('Enter a valid quantity to move.','error');
   busy($('moveBtn'),true,'MOVING…');
   try{
-    await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id})});
+    const result=await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id,notesProductId:currentProduct.notes_product_id||currentProduct.id,currentRemarks:currentProduct.item_remarks||''})});
     addHistory({sku:currentProduct.sku||currentProduct.catalogue_sku,title:currentProduct.title,from:source.location,to:destination,qty:all?source.quantity_available:qty,time:new Date().toISOString()});
-    toast(`Moved ${currentProduct.sku||'item'}: ${source.location} → ${destination}`,'success');
+    if(result.notes?.warning) toast(`Moved successfully, but Notes update failed: ${result.notes.warning}`,'error');
+    else toast(`Moved ${currentProduct.sku||'item'}: ${source.location} → ${destination} · Notes updated`,'success');
     if(state.rapid) clearForNext(); else { $('lookup').value=currentProduct.sku||currentProduct.catalogue_sku||''; await findItem(); }
   }catch(e){toast(e.message,'error');}
   finally{busy($('moveBtn'),false);}
