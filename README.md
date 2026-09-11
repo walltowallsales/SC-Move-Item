@@ -1,3 +1,7 @@
+# SellerChamp Location Mover v2.2.0
+
+This build fixes relocation + Notes behavior by preferring SellerChamp's standard product record when an item can be found by SKU/UPC/ASIN. A full move updates the existing inventory-location record (so the old location is replaced) and prepends `Previously on OLD-LOCATION - ` to `item_remarks`. Catalog Sync remains available as a fallback.
+
 # SellerChamp Location Mover
 
 A phone-friendly warehouse tool for quickly changing inventory locations in SellerChamp.

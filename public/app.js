@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.2.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -87,7 +87,7 @@ async function moveItem(){
     const result=await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id,notesProductId:currentProduct.notes_product_id||currentProduct.id,currentRemarks:currentProduct.item_remarks||''})});
     addHistory({sku:currentProduct.sku||currentProduct.catalogue_sku,title:currentProduct.title,from:source.location,to:destination,qty:all?source.quantity_available:qty,time:new Date().toISOString()});
     if(result.notes?.warning) toast(`Moved successfully, but Notes update failed: ${result.notes.warning}`,'error');
-    else toast(`Moved ${currentProduct.sku||'item'}: ${source.location} → ${destination} · Notes updated`,'success');
+    else toast(`Relocated ${currentProduct.sku||'item'}: ${source.location} → ${destination} · old location replaced · Notes prepended`,'success');
     if(state.rapid) clearForNext(); else { $('lookup').value=currentProduct.sku||currentProduct.catalogue_sku||''; await findItem(); }
   }catch(e){toast(e.message,'error');}
   finally{busy($('moveBtn'),false);}

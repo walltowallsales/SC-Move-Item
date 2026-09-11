@@ -178,7 +178,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.2.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -188,8 +188,18 @@ app.get('/api/lookup', async (req, res) => {
   const code = String(req.query.code || '').trim();
   if (!code) return res.status(400).json({ error: 'Enter or scan an SKU/barcode.' });
   try {
+    // Prefer the standard SellerChamp product record whenever possible.
+    // It exposes the authoritative item_remarks field and inventory-location ID,
+    // allowing a full move to rename the existing location and prepend Notes reliably.
+    const legacy = await lookupLegacy(code);
+    if (legacy) return res.json({ product: legacy });
+
+    // Catalog Sync is a fallback for catalogue SKU-only records / partial transfers.
     const catalog = await lookupCatalog(code);
     if (catalog) {
+      // Try to associate a standard product for Notes when the scanned identifier
+      // also happens to match SKU/UPC/ASIN. If no match exists, the UI will report
+      // that the inventory move worked but Notes could not be updated.
       try {
         const notesProduct = await getLegacyProductForNotes(code);
         if (notesProduct) {
@@ -199,8 +209,6 @@ app.get('/api/lookup', async (req, res) => {
       } catch {}
       return res.json({ product: catalog });
     }
-    const legacy = await lookupLegacy(code);
-    if (legacy) return res.json({ product: legacy });
     res.status(404).json({ error: `No SellerChamp item matched “${code}”.` });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'SellerChamp lookup failed.', details: e.data || e.message });
