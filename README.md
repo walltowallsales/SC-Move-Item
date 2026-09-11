@@ -51,3 +51,7 @@ The server connects to `https://app.sellerchamp.com` and sends your token in Sel
 - `/api/master_product_inventory_locations/update_quantities` for Catalog Sync transfers.
 - `/api/products` plus `/api/products/:id/inventory_locations` as the standard-product fallback.
 - `PUT /api/products/:id/inventory_locations/:location_id` for full-location moves in fallback mode.
+
+
+## iPhone camera scanning
+Version 1.1 uses ZXing in the browser for camera barcode scanning, including iPhone Safari. The Render site must be served over HTTPS (Render provides this automatically). Camera permission must be allowed in Safari. Bluetooth/USB scanners continue to work as keyboard input.

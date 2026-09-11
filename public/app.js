@@ -101,15 +101,65 @@ function renderHistory(){const h=$('history');if(!state.history.length){h.classN
 function escapeHtml(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 $('clearHistory').onclick=()=>{state.history=[];localStorage.removeItem('moveHistory');renderHistory();};
 
-$('cameraBtn').onclick=startCamera;$('stopCamera').onclick=stopCamera;
-async function startCamera(){
-  if(!('BarcodeDetector' in window)){return toast('Camera barcode detection is not supported in this browser. A Bluetooth/USB scanner will still work.','error');}
+$('cameraBtn').onclick=()=>startCamera('item');
+$('locationCameraBtn').onclick=()=>startCamera('location');
+$('stopCamera').onclick=stopCamera;
+let zxingReader = null;
+let cameraTarget = 'item';
+
+async function startCamera(target='item'){
+  cameraTarget=target;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    return toast('Camera access is not available in this browser.','error');
+  }
+  if(typeof ZXing==='undefined' || !ZXing.BrowserMultiFormatReader){
+    return toast('The camera scanner did not load. Check your internet connection and reload the page.','error');
+  }
+  stopCamera();
+  $('cameraWrap').classList.remove('hidden');
+  $('stopCamera').textContent=target==='location'?'Stop destination scan':'Stop Camera';
   try{
-    const detector=new BarcodeDetector({formats:['code_128','code_39','ean_13','ean_8','upc_a','upc_e','qr_code']});
-    cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});$('camera').srcObject=cameraStream;await $('camera').play();$('cameraWrap').classList.remove('hidden');
-    const detect=async()=>{if(!cameraStream)return;try{const codes=await detector.detect($('camera'));if(codes.length){$('lookup').value=codes[0].rawValue;stopCamera();findItem();return}}catch{}detectorTimer=setTimeout(detect,180)};detect();
-  }catch(e){toast('Could not open the camera. Check camera permission.','error');}
+    zxingReader=new ZXing.BrowserMultiFormatReader();
+    await zxingReader.decodeFromVideoDevice(undefined,$('camera'),(result,err)=>{
+      if(!result)return;
+      const value=(result.getText?result.getText():result.text||'').trim();
+      if(!value)return;
+      const thisTarget=cameraTarget;
+      stopCamera();
+      if(thisTarget==='location'){
+        $('toLocation').value=value;
+        loadLocationSuggestions();
+        if(state.rapid){
+          toast(`Destination scanned: ${value}`,'success');
+          setTimeout(()=>moveItem(),150);
+        } else {
+          toast(`Destination scanned: ${value}`,'success');
+          $('moveBtn').focus();
+        }
+      } else {
+        $('lookup').value=value;
+        toast(`Barcode scanned: ${value}`,'success');
+        findItem();
+      }
+    });
+  }catch(e){
+    stopCamera();
+    const name=e && e.name ? e.name : '';
+    if(name==='NotAllowedError' || name==='PermissionDeniedError'){
+      toast('Camera permission was denied. In iPhone Settings, allow Safari camera access, then try again.','error');
+    } else {
+      toast('Could not open the camera. Make sure no other app is using it and camera permission is allowed.','error');
+    }
+  }
 }
-function stopCamera(){if(detectorTimer)clearTimeout(detectorTimer);detectorTimer=null;if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}$('cameraWrap').classList.add('hidden');}
+function stopCamera(){
+  if(detectorTimer)clearTimeout(detectorTimer);
+  detectorTimer=null;
+  if(zxingReader){try{zxingReader.reset();}catch{} zxingReader=null;}
+  const video=$('camera');
+  if(video && video.srcObject){try{video.srcObject.getTracks().forEach(t=>t.stop());}catch{} video.srcObject=null;}
+  if(cameraStream){try{cameraStream.getTracks().forEach(t=>t.stop());}catch{} cameraStream=null;}
+  $('cameraWrap').classList.add('hidden');
+}
 
 checkStatus();$('lookup').focus();

@@ -31,7 +31,7 @@
         <input id="lookup" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SKU, UPC, ASIN…" />
         <button id="findBtn">Find Item</button>
       </div>
-      <div class="hint">Bluetooth/USB scanners work automatically because they type into this box. Camera scan works on supported browsers.</div>
+      <div class="hint">Bluetooth/USB scanners work automatically because they type into this box. Camera scanning works on iPhone Safari, Android, and desktop browsers with camera access.</div>
       <button id="cameraBtn" class="ghost">📷 Scan with camera</button>
       <div id="cameraWrap" class="camera hidden">
         <video id="camera" playsinline muted></video>
@@ -56,6 +56,7 @@
       <label for="toLocation">3. New location</label>
       <input id="toLocation" list="locationSuggestions" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Example: B-07-2" />
       <datalist id="locationSuggestions"></datalist>
+      <button id="locationCameraBtn" class="ghost">📷 Scan destination with camera</button>
 
       <div id="qtyControls" class="qty-controls">
         <label class="check"><input id="moveAll" type="checkbox" checked /> Move all quantity from this location</label>
@@ -89,6 +90,7 @@
 
     <div id="toast" class="toast hidden"></div>
   </main>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
