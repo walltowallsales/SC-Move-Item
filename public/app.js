@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.12.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.13.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -110,7 +110,7 @@ async function deleteZeroLocation(index){
   try{
     await api('/api/inventory-location',{
       method:'DELETE',
-      body:JSON.stringify({productId:currentProduct.id,locationId:loc.id})
+      body:JSON.stringify({productId:currentProduct.id,locationId:loc.id,sku:currentProduct.sku||currentProduct.catalogue_sku||'',title:currentProduct.title||''})
     });
     toast(`Deleted zero-quantity location: ${name}`,'success');
     const code=currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'';

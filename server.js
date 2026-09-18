@@ -49,6 +49,20 @@ async function scFetch(endpoint, options = {}) {
   return data;
 }
 
+const CHANGE_LOG_URL = 'https://script.google.com/macros/s/AKfycbw2UHYXOzZajklEXvHf-o5Ht1f6P6e4ifmzWVsRdbyUnVisv-23SUxRrlVr6QMgJk5ZpA/exec';
+async function logChange(entry) {
+  try {
+    const response = await fetch(CHANGE_LOG_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(entry), redirect:'follow'
+    });
+    const text=await response.text(); let data={};
+    try{data=JSON.parse(text)}catch{}
+    if(!response.ok || data.success===false) return {logged:false,warning:data.error||`HTTP ${response.status}`};
+    return {logged:true};
+  } catch(e) { return {logged:false,warning:e.message||'Google Sheets logging failed'}; }
+}
+
 function normalizeMasterProduct(p) {
   return {
     mode: 'catalog',
@@ -259,7 +273,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.12.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.13.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -319,13 +333,13 @@ app.post('/api/move', async (req, res) => {
         method: 'POST', body: JSON.stringify(body)
       });
 
-      let notes = { updated: false };
-      try {
-        notes = await prependPreviousLocation(notesProductId, fromLocation);
-      } catch (noteError) {
-        notes = { updated: false, warning: 'Inventory moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
-      }
-      return res.json({ ok: true, mode: 'catalog', result: data, notes });
+      const log = await logChange({
+        app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
+        oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
+        quantity:allQuantity ? '' : Number(quantity),
+        details:allQuantity ? 'Moved all quantity from source location' : ''
+      });
+      return res.json({ok:true,mode:'catalog',result:data,log});
     }
 
     if (mode === 'legacy') {
@@ -348,13 +362,13 @@ app.post('/api/move', async (req, res) => {
         method: 'PUT', body: JSON.stringify(payload)
       });
 
-      let notes = { updated: false };
-      try {
-        notes = await prependPreviousLocation(notesProductId || productId, fromLocation);
-      } catch (noteError) {
-        notes = { updated: false, warning: 'Location moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
-      }
-      return res.json({ ok: true, mode: 'legacy', result: data, notes });
+      const log = await logChange({
+        app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
+        oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
+        quantity:Number(source.quantity_available||0),
+        details:'Moved full quantity from source location'
+      });
+      return res.json({ok:true,mode:'legacy',result:data,log});
     }
 
     res.status(400).json({ error: 'Unknown inventory mode. Look the item up again.' });
@@ -367,7 +381,7 @@ app.post('/api/move', async (req, res) => {
 
 
 app.delete('/api/inventory-location', async (req, res) => {
-  const { productId, locationId } = req.body || {};
+  const { productId, locationId, sku, title } = req.body || {};
   if (!productId || !locationId) return res.status(400).json({ error: 'Product ID and location ID are required.' });
   try {
     const locData = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
@@ -398,7 +412,12 @@ app.delete('/api/inventory-location', async (req, res) => {
     if (stillThere) {
       return res.status(409).json({ error: 'SellerChamp accepted the cleanup request, but the zero-quantity location is still present.' });
     }
-    res.json({ ok: true, deletedLocation: location.location || '(blank)', result: data });
+    const log=await logChange({
+      app:'Location Mover',action:'Zero-Quantity Location Deleted',sku:sku||'',title:title||'',
+      oldLocation:location.location||'(blank)',newLocation:'',quantity:0,
+      details:'Removed zero-quantity inventory location'
+    });
+    res.json({ok:true,deletedLocation:location.location||'(blank)',result:data,log});
   } catch (e) {
     res.status(e.status || 500).json({ error: 'SellerChamp could not delete the zero-quantity location.', details: e.data || e.message });
   }
