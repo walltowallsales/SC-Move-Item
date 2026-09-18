@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.23.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.24.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -87,8 +87,12 @@ function showProduct(){
     all.innerHTML=locations.map((l,i)=>{
       const qty=Number(l.quantity_available||0);
       const canDelete=qty===0 && l.id && p.mode==='legacy';
-      return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
+      const canUpdateQty=p.mode!=='batch' && l.id;
+      return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${canUpdateQty?`<button class="update-qty" type="button" data-location-index="${i}">Update Qty</button>`:''}${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
     }).join('');
+    all.querySelectorAll('.update-qty').forEach(btn=>{
+      btn.onclick=()=>updateLocationQuantity(Number(btn.dataset.locationIndex));
+    });
     all.querySelectorAll('.delete-zero').forEach(btn=>{
       btn.onclick=()=>deleteZeroLocation(Number(btn.dataset.locationIndex));
     });
@@ -122,6 +126,28 @@ function showProduct(){
   });
 }
 
+
+async function updateLocationQuantity(index){
+  if(!currentProduct || currentProduct.mode==='batch') return toast('Batch quantities must be changed in SellerChamp.','error');
+  const loc=(currentProduct.locations||[])[index];
+  if(!loc || !loc.id) return toast('This location cannot be updated here.','error');
+  const raw=prompt(`Update quantity at ${loc.location}\n\nCurrent quantity: ${Number(loc.quantity_available||0)}\n\nEnter the new total quantity:`,String(Number(loc.quantity_available||0)));
+  if(raw===null)return;
+  const qty=Number(String(raw).trim());
+  if(!Number.isInteger(qty) || qty<0)return toast('Quantity must be a whole number of 0 or greater.','error');
+  const oldQty=Number(loc.quantity_available||0);
+  if(qty===oldQty)return toast('Quantity is already '+qty+'.');
+  if(!confirm(`Change ${loc.location} from Qty ${oldQty} to Qty ${qty}?`))return;
+  try{
+    await api('/api/update-location-quantity',{method:'POST',body:JSON.stringify({
+      mode:currentProduct.mode,productId:currentProduct.id,locationId:loc.id,
+      location:loc.location,newQuantity:qty,sku:currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'',
+      title:currentProduct.title||''
+    })});
+    toast(`Quantity updated: ${loc.location} — Qty ${qty}`);
+    await lookupItem(currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'');
+  }catch(e){toast(e.message,'error');}
+}
 
 async function deleteZeroLocation(index){
   if(!currentProduct)return;

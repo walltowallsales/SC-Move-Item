@@ -34,3 +34,5 @@
 
 #moveBtn.batch-open{background:#6b7280;line-height:1.15;padding-top:14px;padding-bottom:14px}
 #moveBtn.batch-open .batch-open-sub{display:inline-block;margin-top:5px;font-size:.72em;font-weight:700}
+
+.update-qty{margin-left:8px;padding:5px 9px;border:1px solid #9ca3af;border-radius:7px;background:#fff;font-size:.78rem;font-weight:700}

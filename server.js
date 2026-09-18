@@ -359,7 +359,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.23.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.24.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -438,6 +438,41 @@ app.get('/api/batch-diagnostic', async (req, res) => {
   } catch(e) {
     res.status(e.status||500).json({error:'Batch diagnostic failed.',details:e.data||e.message});
   }
+});
+
+
+app.post('/api/update-location-quantity', async (req,res)=>{
+  const {mode,productId,locationId,location,newQuantity,sku,title}=req.body||{};
+  if(mode==='batch') return res.status(409).json({error:'Batch quantities must be changed in SellerChamp.'});
+  if(mode!=='legacy') return res.status(409).json({error:'Quantity update is only enabled for standard SellerChamp inventory locations.'});
+  const qty=Number(newQuantity);
+  if(!productId || !locationId || !Number.isInteger(qty) || qty<0) return res.status(400).json({error:'Product, location, and a whole-number quantity of 0 or greater are required.'});
+  try{
+    const beforeData=await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
+    const before=(beforeData.inventory_locations||[]).find(x=>String(x.id)===String(locationId));
+    if(!before) return res.status(404).json({error:'The inventory location no longer exists. Look the item up again.'});
+    const oldQty=Number(before.quantity_available||0);
+    const payload={inventory_location:{
+      location:String(before.location||location||'').trim(),
+      quantity_available:qty,
+      delete_if_empty:before.delete_if_empty!==false,
+      priority:Number(before.priority||1)
+    }};
+    await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations/${encodeURIComponent(before.id)}`,{
+      method:'PUT',body:JSON.stringify(payload)
+    });
+    const afterData=await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
+    const after=(afterData.inventory_locations||[]).find(x=>String(x.id)===String(locationId));
+    if(!after || Number(after.quantity_available)!==qty)
+      return res.status(409).json({error:'SellerChamp did not confirm the quantity change. No success was reported.'});
+    let log={logged:false};
+    try{log=await logChange({
+      app:'Location Mover',action:'Quantity Updated',sku:sku||'',title:title||'',
+      oldLocation:String(before.location||location||''),newLocation:String(before.location||location||''),
+      quantity:qty,details:`Quantity changed from ${oldQty} to ${qty}`
+    });}catch(e){log={logged:false,warning:e.message||'Google Sheets logging failed'};}
+    return res.json({success:true,oldQuantity:oldQty,newQuantity:qty,location:after.location,log});
+  }catch(e){return res.status(e.status||500).json({error:'SellerChamp quantity update failed.',details:e.data||e.message});}
 });
 
 app.post('/api/move', async (req, res) => {
