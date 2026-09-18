@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.8.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.9.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -59,9 +59,9 @@ function showProduct(){
   $('title').textContent=p.title||'Untitled item';
   const productBtn=$('openProductBtn'), batchBtn=$('openBatchBtn');
   const skuForLink=p.sku||p.catalogue_sku||p.upc||'';
-  productBtn.dataset.url=skuForLink?`https://sellerchamp.com/products?search=${encodeURIComponent(skuForLink)}`:'';
+  productBtn.dataset.url=p.id?`https://app.sellerchamp.com/products/${encodeURIComponent(p.id)}`:'';
   batchBtn.dataset.url=p.sellerchamp_batch_url||'https://app.sellerchamp.com/manifests';
-  productBtn.disabled=!skuForLink;
+  productBtn.disabled=!p.id;
   if(p.image){
     $('productImage').src=p.image;
     $('productImage').classList.remove('hidden');
