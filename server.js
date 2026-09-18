@@ -404,7 +404,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.28.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.29.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -417,32 +417,51 @@ app.get('/api/lookup', async (req, res) => {
     let product = await lookupLegacy(code);
     if (!product) product = await lookupCatalog(code);
 
-    // Always resolve the originating SellerChamp marketplace Batch/Manifest.
-    // This is especially important for not-yet-submitted listings, whose Products
-    // record can still show zero quantity and no inventory location.
+    // FAST PATH: if Products already returned a real inventory-location record,
+    // it is immediately usable by this app. Do not scan Batches at all.
+    if (product) {
+      const hasWritableProductLocation = Array.isArray(product.locations) &&
+        product.locations.some(x => x && x.id && String(x.location || '').trim());
+      if (hasWritableProductLocation) {
+        product.workflow = 'product';
+        product.location_source = 'product';
+        product.batch_found = false;
+        product.batch_lookup_skipped = true;
+        return res.json({ product });
+      }
+    }
+
+    // SLOW FALLBACK: Products did not provide writable inventory. Only now search
+    // SellerChamp Batches for an unsubmitted listing/location.
     let manifestMatch = null;
     try { manifestMatch = await findManifestForCode(code); } catch (e) {
       console.warn('Manifest lookup failed:', e.message);
     }
 
     if (manifestMatch && Number(manifestMatch.listing?.quantity_listed || 0) > 0 && manifestMatch.listing?.product_id) {
-      // Submitted Batch listing: follow the exact linked Product ID. This avoids
-      // accidentally selecting a draft/duplicate Products row that shares the SKU.
+      // If the fallback discovers a submitted listing, follow its exact Product ID
+      // once; this covers duplicate/draft Product rows without penalizing normal lookups.
       const submittedProduct = await lookupProductById(manifestMatch.listing.product_id);
       if (submittedProduct) {
+        const hasSubmittedLocation = Array.isArray(submittedProduct.locations) &&
+          submittedProduct.locations.some(x => x && x.id && String(x.location || '').trim());
+        if (hasSubmittedLocation) {
+          submittedProduct.workflow = 'product';
+          submittedProduct.location_source = 'product';
+          submittedProduct.submitted_from_batch = true;
+          submittedProduct.batch_found = true;
+          submittedProduct.manifest_id = manifestMatch.manifest_id;
+          submittedProduct.manifest_name = manifestMatch.manifest_name;
+          submittedProduct.sellerchamp_batch_url = manifestMatch.url;
+          return res.json({ product: submittedProduct });
+        }
         product = submittedProduct;
-        product.submitted_from_batch = true;
       }
     }
 
     if (product) {
       applyManifestMatch(product, manifestMatch);
-      if (!product.workflow) {
-        const hasWritableProductLocation = Array.isArray(product.locations) &&
-          product.locations.some(x => x && x.id && String(x.location || '').trim());
-        product.workflow = hasWritableProductLocation ? 'product' :
-          (product.location_source === 'batch' ? 'batch' : 'product');
-      }
+      if (!product.workflow) product.workflow = product.location_source === 'batch' ? 'batch' : 'product';
       return res.json({ product });
     }
 
