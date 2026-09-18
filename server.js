@@ -349,6 +349,7 @@ function applyManifestMatch(product, match) {
       source: 'batch'
     }];
     product.location_source = 'batch';
+    product.mode = 'batch';
   }
   if (!product.title && listing.title) product.title = listing.title;
   if (!product.sku && listing.sku) product.sku = listing.sku;
@@ -358,7 +359,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.20.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.21.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -489,10 +490,7 @@ app.post('/api/move', async (req, res) => {
   if (String(fromLocation).trim().toLowerCase() === String(toLocation).trim().toLowerCase()) return res.status(400).json({ error: 'The new location is the same as the current location.' });
 
   try {
-    if (mode === 'batch') {
-      return res.status(409).json({ error: 'This location comes from an unsubmitted SellerChamp Batch. Open the exact Batch to change it there.' });
-    }
-    if (mode === 'catalog') {
+if (mode === 'catalog') {
       const body = {
         master_product_id: productId,
         inventory_action: 'transfer',

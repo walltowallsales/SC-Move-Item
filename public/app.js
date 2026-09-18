@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.20.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.21.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -100,10 +100,11 @@ function showProduct(){
   sel.value=locations.length?'0':''; updateSourceQty();
   $('moveAll').checked=true;$('partialQtyWrap').classList.add('hidden');$('toLocation').value='';
   $('moveAll').disabled=p.mode==='legacy' || p.mode==='batch';
-  $('moveBtn').disabled=p.mode==='batch';
+  $('moveBtn').disabled=false;
   if(p.mode==='batch'){
-    $('qtyControls').title='This location is from an unsubmitted SellerChamp Batch.';
-    toast(`Found in SellerChamp Batch${p.manifest_name?`: ${p.manifest_name}`:''}. Use SellerChamp Batch to change this unsubmitted item.`);
+    $('moveAll').checked=true;
+    $('qtyControls').title='Batch items currently move the full quantity.';
+    toast(`Found in SellerChamp Batch${p.manifest_name?`: ${p.manifest_name}`:''}. Ready to move the full quantity.`);
   }
   if(p.mode==='legacy'){$('moveAll').checked=true;$('qtyControls').title='Partial transfers require Catalog Sync.';}
   else $('qtyControls').title='';
@@ -151,7 +152,11 @@ async function loadLocationSuggestions(){const q=$('toLocation').value.trim();if
 $('moveBtn').onclick=moveItem;
 async function moveItem(){
   if(!currentProduct)return toast('Find an item first.','error'); const source=selectedLocation(); if(!source)return toast('This item has no source location to move.','error');
-  const destination=$('toLocation').value.trim(); if(!destination)return toast('Enter or scan the new location.','error');
+  let destination=$('toLocation').value.trim(); if(!destination)return toast('Enter or scan the new location.','error');
+  if(destination.length%2===0){
+    const half=destination.slice(0,destination.length/2);
+    if(half && destination===half+half){destination=half;$('toLocation').value=half;}
+  }
   const all=$('moveAll').checked; const qty=all?source.quantity_available:Number($('moveQty').value);
   if(!all && (!Number.isInteger(qty)||qty<1||qty>source.quantity_available)) return toast('Enter a valid quantity to move.','error');
   busy($('moveBtn'),true,'MOVING…');
