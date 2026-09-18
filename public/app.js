@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.16.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.17.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -63,6 +63,9 @@ function showProduct(){
   batchBtn.dataset.url=p.sellerchamp_batch_url||'';
   batchBtn.disabled=!p.sellerchamp_batch_url;
   batchBtn.title=p.batch_found?(p.manifest_name?`Open batch: ${p.manifest_name}`:'Open originating SellerChamp batch'):'No originating batch was found';
+  let bi=$('batchInfo');
+  if(!bi){bi=document.createElement('div');bi.id='batchInfo';bi.style.cssText='margin-top:6px;font-size:.9rem;font-weight:700;';batchBtn.parentElement.appendChild(bi);}
+  bi.textContent=p.batch_found?`Batch: ${p.manifest_name||p.manifest_id}`:'Batch: not found';
   productBtn.disabled=!skuForLink;
   if(p.image){
     $('productImage').src=p.image;

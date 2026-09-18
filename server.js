@@ -275,11 +275,10 @@ async function findManifestForCode(code) {
   const needle = String(code || '').trim().toLowerCase();
   if (!needle) return null;
 
-  // SellerChamp's marketplace "Batches" UI is backed by the documented
-  // Manifests/Product Listings API. Search newest manifests first, then inspect
-  // their listing rows for an exact SKU/UPC/ASIN match.
+  // Marketplace Batches are SellerChamp Manifests. Search manifests newest-first,
+  // then inspect each manifest's documented product_listings endpoint.
   const pageSize = 100;
-  for (let page = 1; page <= 5; page++) {
+  for (let page = 1; page <= 10; page++) {
     let data;
     try {
       data = await scFetch(`/api/manifests?page=${page}&page_size=${pageSize}`);
@@ -287,13 +286,13 @@ async function findManifestForCode(code) {
       if ([400,404].includes(e.status)) return null;
       throw e;
     }
-    const manifests = data.manifests || data.manifest || [];
-    const list = Array.isArray(manifests) ? manifests : (manifests ? [manifests] : []);
+    let list = data.manifests || data.manifest || [];
+    if (!Array.isArray(list)) list = list ? [list] : [];
     if (!list.length) break;
 
     for (const manifest of list) {
       if (!manifest?.id) continue;
-      for (let lp = 1; lp <= 10; lp++) {
+      for (let lp = 1; lp <= 20; lp++) {
         let listingData;
         try {
           listingData = await scFetch(`/api/manifests/${encodeURIComponent(manifest.id)}/product_listings?page=${lp}&page_size=100`);
@@ -301,17 +300,19 @@ async function findManifestForCode(code) {
           if ([400,404].includes(e.status)) break;
           throw e;
         }
-        const rows = listingData.product_listings || [];
-        const match = rows.find(x => [x.sku, x.upc, x.asin, x.catalogue_sku, x.custom_catalogue_sku]
-          .filter(Boolean).some(v => String(v).trim().toLowerCase() === needle));
+        let rows = listingData.product_listings || listingData.product_listing || [];
+        if (!Array.isArray(rows)) rows = rows ? [rows] : [];
+        const match = rows.find(x => [
+          x.sku, x.alt_sku, x.upc, x.barcode, x.asin,
+          x.catalogue_sku, x.custom_catalogue_sku
+        ].filter(Boolean).some(v => String(v).trim().toLowerCase() === needle));
         if (match) {
           return {
-            manifest_id: manifest.id,
+            manifest_id: match.manifest_id || manifest.id,
             manifest_name: manifest.name || '',
             manifest_status: manifest.status || '',
             listing: match,
-            // Existing SellerChamp UI route used elsewhere in this app.
-            url: `https://app.sellerchamp.com/manifests/${encodeURIComponent(manifest.id)}`
+            url: `https://app.sellerchamp.com/manifests/${encodeURIComponent(match.manifest_id || manifest.id)}`
           };
         }
         if (rows.length < 100) break;
@@ -334,11 +335,12 @@ function applyManifestMatch(product, match) {
 
   // For an unsubmitted item, Products may legitimately show zero/no locations.
   // Use the manifest listing's own location/quantity for warehouse display.
-  if ((!product.locations || !product.locations.length) && listing.location) {
-    const qty = Number(listing.quantity_available ?? listing.quantity ?? 0);
+  const batchLocation = listing.location || listing.item_location || '';
+  if ((!product.locations || !product.locations.length) && batchLocation) {
+    const qty = Number(listing.quantity ?? listing.quantity_available ?? 0);
     product.locations = [{
       id: '',
-      location: listing.location,
+      location: batchLocation,
       quantity_available: qty,
       priority: 1,
       delete_if_empty: false,
@@ -354,7 +356,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.16.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.17.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -394,7 +396,7 @@ app.get('/api/lookup', async (req, res) => {
         asin: x.asin || '',
         title: x.title || '',
         image: x.primary_image || x.image_url || '',
-        locations: x.location ? [{id:'',location:x.location,quantity_available:qty,source:'batch'}] : [],
+        locations: (x.location || x.item_location) ? [{id:'',location:(x.location || x.item_location),quantity_available:qty,source:'batch'}] : [],
         manifest_id: manifestMatch.manifest_id,
         manifest_name: manifestMatch.manifest_name,
         manifest_status: manifestMatch.manifest_status,
@@ -408,6 +410,30 @@ app.get('/api/lookup', async (req, res) => {
     res.status(404).json({ error: `No SellerChamp item matched “${code}”.` });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'SellerChamp lookup failed.', details: e.data || e.message });
+  }
+});
+
+app.get('/api/batch-diagnostic', async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) return res.status(400).json({error:'Enter a SKU.'});
+  try {
+    const match = await findManifestForCode(code);
+    if (!match) return res.json({ok:true,found:false,sku:code});
+    const x=match.listing||{};
+    res.json({
+      ok:true, found:true, sku:code,
+      manifest_id:match.manifest_id,
+      manifest_name:match.manifest_name,
+      manifest_status:match.manifest_status,
+      product_listing_id:x.id||'',
+      product_id:x.product_id||'',
+      listing_sku:x.sku||'',
+      location:x.location||x.item_location||'',
+      quantity:Number(x.quantity ?? x.quantity_available ?? 0),
+      url:match.url
+    });
+  } catch(e) {
+    res.status(e.status||500).json({error:'Batch diagnostic failed.',details:e.data||e.message});
   }
 });
 

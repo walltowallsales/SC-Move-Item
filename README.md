@@ -1,4 +1,4 @@
-# SellerChamp Location Mover v2.16.0
+# SellerChamp Location Mover v2.17.0
 
 This build fixes relocation + Notes behavior by preferring SellerChamp's standard product record when an item can be found by SKU/UPC/ASIN. A full move updates the existing inventory-location record (so the old location is replaced) and prepends `Previously on OLD-LOCATION - ` to `item_remarks`. Catalog Sync remains available as a fallback.
 
@@ -65,47 +65,51 @@ Version 1.1 uses ZXing in the browser for camera barcode scanning, including iPh
 On each successful move, the app prepends `Previously on OLD-LOCATION - ` to the actual SellerChamp listing-card **Notes** field when that field is exposed by the product API. Because SellerChamp does not publicly document that Notes field, v2.4 discovers its real API key from the live product response and verifies the saved value. `item_remarks` is no longer used for this history. Full-quantity moves relocate the stock from the old bin to the new bin; partial Catalog Sync transfers leave any remaining quantity at the source bin.
 
 
-## v2.16.0
+## v2.17.0
 After lookup, shows a larger product photo, prominent SKU, title, every returned inventory location with quantity, and automatically focuses the 3. New Location field for immediate scanner/keyboard input.
 
-## v2.16.0
+## v2.17.0
 - Temporarily removes all Notes updating from the move workflow.
 - Shows a move-complete confirmation dialog with SKU, title, old location, new location, and quantity.
 - Tapping OK clears the item and returns focus to the item SKU/barcode scan field.
 - Adds SellerChamp Product and SellerChamp Batch navigation buttons beneath the title.
 
 
-## v2.16.0
+## v2.17.0
 Fixed SellerChamp Products navigation, removed both camera scan buttons/scanner code, and removed the Standard SellerChamp location label.
 
 
-## v2.16.0
+## v2.17.0
 SellerChamp Product button now opens the exact product by SellerChamp product ID instead of attempting a SKU search.
 
 
-## v2.16.0
+## v2.17.0
 SellerChamp Product button now uses the proven app2 Products-list SKU filter pattern: /products?product[query]=SKU, so the Products page opens with that SKU filtered instead of opening the product detail page.
 
 
-## v2.16.0
+## v2.17.0
 When an item has a standard SellerChamp inventory location with Qty 0, the location list offers a Delete Location button. Deletion requires confirmation and the server rechecks SellerChamp immediately before deleting; if quantity is no longer zero, deletion is refused.
 
 
-## v2.16.0
+## v2.17.0
 Zero-quantity cleanup now uses SellerChamp's inventory-location PUT update with quantity_available=0 and delete_if_empty=true, then verifies the location disappeared. Removed the obsolete camera-scanning help sentence.
 
 
-## v2.16.0
+## v2.17.0
 Adds permanent Google Sheets logging for successful location moves and zero-quantity location removals. Also removes the Notes update from the move workflow.
 
 
-## v2.16.0
+## v2.17.0
 Fixes the v2.13 move regression: SKU/title are now read from the move request before Google Sheets logging. Google logging is isolated so it cannot make an already-successful SellerChamp move appear failed.
 
 
-## v2.16.0
+## v2.17.0
 Fixes Google Sheets audit rows missing SKU and Product Title by sending those values from the browser with every successful move/cleanup request.
 
 
-## v2.16.0
+## v2.17.0
 Resolves a scanned SKU against SellerChamp marketplace Manifests/Product Listings. The Batch button now opens the exact originating manifest when found. If Products has no location but an unsubmitted manifest listing does, the app displays the batch listing location and quantity. Batch-only locations are display-only until a documented safe update route is available.
+
+
+## v2.17.0
+Strengthens marketplace Batch/Manifest lookup using SellerChamp's documented GET manifests and GET product_listings-for-manifest endpoints. Supports listing location/item_location and quantity fields, shows the resolved batch name in the UI, and adds a safe diagnostic endpoint that never exposes the SellerChamp token.
