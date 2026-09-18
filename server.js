@@ -338,7 +338,13 @@ function applyManifestMatch(product, match) {
   // For an unsubmitted item, Products may legitimately show zero/no locations.
   // Use the manifest listing's own location/quantity for warehouse display.
   const batchLocation = listing.location || listing.item_location || '';
-  if ((!product.locations || !product.locations.length) && batchLocation) {
+  // Products inventory always wins. A historical Batch match must never force a
+  // submitted Product back into Batch mode. Only use Batch inventory as the
+  // authoritative fallback when Products has BOTH no inventory-location records
+  // AND no available quantity (the not-yet-submitted pattern).
+  const hasProductLocations = Array.isArray(product.locations) && product.locations.length > 0;
+  const hasProductQuantity = Number(product.quantity_available || 0) > 0;
+  if (!hasProductLocations && !hasProductQuantity && batchLocation) {
     const qty = Number(listing.quantity ?? listing.quantity_available ?? 0);
     product.locations = [{
       id: '',
@@ -350,6 +356,10 @@ function applyManifestMatch(product, match) {
     }];
     product.location_source = 'batch';
     product.mode = 'batch';
+  } else {
+    // Keep Batch metadata/button for history/navigation, but do not let it alter
+    // the Product-mode write path.
+    product.location_source = hasProductLocations ? 'product' : (product.location_source || 'product');
   }
   if (!product.title && listing.title) product.title = listing.title;
   if (!product.sku && listing.sku) product.sku = listing.sku;
@@ -359,7 +369,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.25.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.26.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
