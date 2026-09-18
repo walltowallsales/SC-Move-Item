@@ -391,13 +391,20 @@ function applyManifestMatch(product, match) {
   }
   if (!product.title && listing.title) product.title = listing.title;
   if (!product.sku && listing.sku) product.sku = listing.sku;
+
+  // Explicit workflow consumed by the UI. A historical Batch association alone
+  // never selects Batch controls.
+  const hasWritableProductLocation = Array.isArray(product.locations) &&
+    product.locations.some(x => x && x.id && String(x.location || '').trim());
+  product.workflow = hasWritableProductLocation ? 'product' :
+    (product.location_source === 'batch' ? 'batch' : 'product');
   return product;
 }
 
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.27.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.28.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -430,6 +437,12 @@ app.get('/api/lookup', async (req, res) => {
 
     if (product) {
       applyManifestMatch(product, manifestMatch);
+      if (!product.workflow) {
+        const hasWritableProductLocation = Array.isArray(product.locations) &&
+          product.locations.some(x => x && x.id && String(x.location || '').trim());
+        product.workflow = hasWritableProductLocation ? 'product' :
+          (product.location_source === 'batch' ? 'batch' : 'product');
+      }
       return res.json({ product });
     }
 
@@ -440,6 +453,7 @@ app.get('/api/lookup', async (req, res) => {
       const qty = Number(x.quantity_available ?? x.quantity ?? 0);
       return res.json({ product: {
         mode: 'batch',
+        workflow: 'batch',
         id: x.product_id || x.id || '',
         sku: x.sku || code,
         catalogue_sku: x.catalogue_sku || x.custom_catalogue_sku || '',

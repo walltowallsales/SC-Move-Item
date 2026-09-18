@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.27.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.28.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -72,6 +72,9 @@ function showProduct(){
   let bi=$('batchInfo');
   if(!bi){bi=document.createElement('div');bi.id='batchInfo';bi.style.cssText='margin-top:6px;font-size:.9rem;font-weight:700;';batchBtn.parentElement.appendChild(bi);}
   bi.textContent=p.batch_found?`Batch: ${p.manifest_name||p.manifest_id}`:'Batch: not found';
+  let wi=$('workflowInfo');
+  if(!wi){wi=document.createElement('div');wi.id='workflowInfo';wi.style.cssText='margin-top:4px;font-size:.82rem;font-weight:800;';bi.parentElement.appendChild(wi);}
+  wi.textContent=p.workflow==='batch'?'WORKFLOW: UNSUBMITTED BATCH':'WORKFLOW: PRODUCTS';
   productBtn.disabled=!skuForLink;
   if(p.image){
     $('productImage').src=p.image;
@@ -87,8 +90,9 @@ function showProduct(){
     all.innerHTML=locations.map((l,i)=>{
       const qty=Number(l.quantity_available||0);
       const canDelete=qty===0 && l.id && p.mode==='legacy';
-      const canUpdateQty=p.mode!=='batch' && l.id;
-      const qtyButton=p.mode==='batch'
+      const isBatchWorkflow=p.workflow==='batch';
+      const canUpdateQty=!isBatchWorkflow && l.id;
+      const qtyButton=isBatchWorkflow
         ? `<button class="update-batch-qty" type="button">UPDATE QUANTITY<br><span class="batch-qty-sub">IN SELLERCHAMP</span></button>`
         : (canUpdateQty?`<button class="update-qty" type="button" data-location-index="${i}">Update Qty</button>`:'');
       return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${qtyButton}${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
@@ -109,9 +113,10 @@ function showProduct(){
   locations.forEach((l,i)=>{const o=new Option(`${l.location} — Qty ${l.quantity_available}`,String(i));sel.add(o)});
   sel.value=locations.length?'0':''; updateSourceQty();
   $('moveAll').checked=true;$('partialQtyWrap').classList.add('hidden');$('toLocation').value='';
-  $('moveAll').disabled=p.mode==='legacy' || p.mode==='batch';
+  const isBatchWorkflow=p.workflow==='batch';
+  $('moveAll').disabled=p.mode==='legacy' || isBatchWorkflow;
   $('moveBtn').disabled=false;
-  if(p.mode==='batch'){
+  if(isBatchWorkflow){
     $('moveAll').checked=true;
     $('qtyControls').title='Batch location changes must be made in SellerChamp.';
     $('moveBtn').innerHTML='BATCH MOVE DISABLED<br><span class="batch-open-sub">OPEN SELLERCHAMP BATCH INSTEAD</span>';
@@ -143,7 +148,7 @@ function openBatchForManualUpdate(){
 }
 
 async function updateLocationQuantity(index){
-  if(!currentProduct || currentProduct.mode==='batch') return toast('Batch quantities must be changed in SellerChamp.','error');
+  if(!currentProduct || currentProduct.workflow==='batch') return toast('Batch quantities must be changed in SellerChamp.','error');
   const loc=(currentProduct.locations||[])[index];
   if(!loc || !loc.id) return toast('This location cannot be updated here.','error');
   const raw=prompt(`Update quantity at ${loc.location}\n\nCurrent quantity: ${Number(loc.quantity_available||0)}\n\nEnter the new total quantity:`,String(Number(loc.quantity_available||0)));
