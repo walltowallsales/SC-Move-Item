@@ -31,3 +31,6 @@
 /* v2.11 zero-quantity location cleanup */
 .location-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
 .delete-zero{padding:6px 9px;border-radius:8px;font-size:12px;font-weight:850;background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+
+#moveBtn.batch-open{background:#6b7280;line-height:1.15;padding-top:14px;padding-bottom:14px}
+#moveBtn.batch-open .batch-open-sub{display:inline-block;margin-top:5px;font-size:.72em;font-weight:700}
