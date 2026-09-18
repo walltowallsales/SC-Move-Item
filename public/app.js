@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.10.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.11.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -73,7 +73,14 @@ function showProduct(){
   if(!locations.length){
     all.innerHTML='<div class="location-empty">No inventory locations found.</div>';
   } else {
-    all.innerHTML=locations.map(l=>`<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-qty">Qty ${Number(l.quantity_available||0)}</span></div>`).join('');
+    all.innerHTML=locations.map((l,i)=>{
+      const qty=Number(l.quantity_available||0);
+      const canDelete=qty===0 && l.id && p.mode==='legacy';
+      return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
+    }).join('');
+    all.querySelectorAll('.delete-zero').forEach(btn=>{
+      btn.onclick=()=>deleteZeroLocation(Number(btn.dataset.locationIndex));
+    });
   }
 
   const sel=$('fromLocation'); sel.innerHTML='';
@@ -91,6 +98,28 @@ function showProduct(){
     $('toLocation').focus({preventScroll:true});
     try{$('toLocation').select();}catch{}
   });
+}
+
+
+async function deleteZeroLocation(index){
+  if(!currentProduct)return;
+  const loc=currentProduct.locations[index];
+  if(!loc || Number(loc.quantity_available||0)!==0 || !loc.id)return;
+  const name=loc.location||'(blank location)';
+  if(!window.confirm(`Delete the zero-quantity location "${name}" from this item?`))return;
+  try{
+    await api('/api/inventory-location',{
+      method:'DELETE',
+      body:JSON.stringify({productId:currentProduct.id,locationId:loc.id})
+    });
+    toast(`Deleted zero-quantity location: ${name}`,'success');
+    const code=currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'';
+    if(code){
+      const data=await api(`/api/lookup?code=${encodeURIComponent(code)}`);
+      currentProduct=data.product;
+      showProduct();
+    }
+  }catch(e){toast(e.message,'error');}
 }
 
 $('fromLocation').onchange=updateSourceQty;

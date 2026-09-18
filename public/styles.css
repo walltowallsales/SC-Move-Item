@@ -27,3 +27,7 @@
 .confirm-title{margin:5px 0 10px;color:#4b5563}
 .confirm-route{font-size:20px;margin:10px 0}
 #confirmOk{width:100%;font-size:18px}
+
+/* v2.11 zero-quantity location cleanup */
+.location-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.delete-zero{padding:6px 9px;border-radius:8px;font-size:12px;font-weight:850;background:#fee2e2;color:#991b1b;border:1px solid #fecaca}

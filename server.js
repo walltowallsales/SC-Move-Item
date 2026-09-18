@@ -259,7 +259,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.10.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.11.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -362,6 +362,29 @@ app.post('/api/move', async (req, res) => {
     const details = e.data || e.message;
     const error = e.status === 422 ? 'SellerChamp rejected the inventory change.' : 'SellerChamp move failed.';
     res.status(e.status || 500).json({ error, details });
+  }
+});
+
+
+app.delete('/api/inventory-location', async (req, res) => {
+  const { productId, locationId } = req.body || {};
+  if (!productId || !locationId) return res.status(400).json({ error: 'Product ID and location ID are required.' });
+  try {
+    const locData = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
+    const location = (locData.inventory_locations || []).find(x => String(x.id) === String(locationId));
+    if (!location) return res.status(404).json({ error: 'That inventory location no longer exists.' });
+
+    // Safety check: never delete a location unless SellerChamp currently reports Qty 0.
+    if (Number(location.quantity_available || 0) !== 0) {
+      return res.status(409).json({ error: 'This location no longer has quantity zero, so it was not deleted.' });
+    }
+
+    const data = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations/${encodeURIComponent(locationId)}`, {
+      method: 'DELETE'
+    });
+    res.json({ ok: true, deletedLocation: location.location || '(blank)', result: data });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: 'SellerChamp could not delete the zero-quantity location.', details: e.data || e.message });
   }
 });
 
