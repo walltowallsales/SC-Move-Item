@@ -259,7 +259,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.11.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.12.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -379,9 +379,25 @@ app.delete('/api/inventory-location', async (req, res) => {
       return res.status(409).json({ error: 'This location no longer has quantity zero, so it was not deleted.' });
     }
 
+    const payload = {
+      inventory_location: {
+        location: String(location.location || ''),
+        quantity_available: 0,
+        delete_if_empty: true,
+        priority: Number(location.priority || 1)
+      }
+    };
     const data = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations/${encodeURIComponent(locationId)}`, {
-      method: 'DELETE'
+      method: 'PUT',
+      body: JSON.stringify(payload)
     });
+
+    // Verify SellerChamp actually removed the zero-quantity location.
+    const verify = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
+    const stillThere = (verify.inventory_locations || []).some(x => String(x.id) === String(locationId));
+    if (stillThere) {
+      return res.status(409).json({ error: 'SellerChamp accepted the cleanup request, but the zero-quantity location is still present.' });
+    }
     res.json({ ok: true, deletedLocation: location.location || '(blank)', result: data });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'SellerChamp could not delete the zero-quantity location.', details: e.data || e.message });
