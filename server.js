@@ -95,10 +95,14 @@ function normalizeLegacyProduct(p) {
     upc: p.upc || '',
     asin: p.asin || '',
     title: p.title || '',
+    item_location: p.item_location || '',
     image: p.primary_image || p.primary_image_url || p.image_url || p.image ||
       p.product_images?.[0]?.large_image_url || p.product_images?.[0]?.original_image_url ||
       p.product_images?.[0]?.image_url || p.product_images?.[0]?.url || '',
     quantity_available: Number(p.quantity_available || 0),
+    quantity_listed: Number(p.quantity_listed || 0),
+    marketplace_id: p.marketplace_id || '',
+    list_status: p.list_status || '',
     item_remarks: p.item_remarks || '',
     ebay_item_condition_id: p.ebay_item_condition_id ?? null,
     notes_product_id: p.id,
@@ -302,10 +306,14 @@ async function findManifestForCode(code) {
         }
         let rows = listingData.product_listings || listingData.product_listing || [];
         if (!Array.isArray(rows)) rows = rows ? [rows] : [];
-        const match = rows.find(x => [
+        const matches = rows.filter(x => [
           x.sku, x.alt_sku, x.upc, x.barcode, x.asin,
           x.catalogue_sku, x.custom_catalogue_sku
         ].filter(Boolean).some(v => String(v).trim().toLowerCase() === needle));
+        // SellerChamp's product_listing response exposes quantity_listed.
+        // A positive quantity_listed is our strongest documented signal that
+        // this Batch listing was submitted. Prefer it over draft/history rows.
+        const match = matches.find(x => Number(x.quantity_listed || 0) > 0) || matches[0];
         if (match) {
           return {
             manifest_id: match.manifest_id || manifest.id,
@@ -321,6 +329,23 @@ async function findManifestForCode(code) {
     if (list.length < pageSize) break;
   }
   return null;
+}
+
+async function lookupProductById(productId) {
+  if (!productId) return null;
+  try {
+    const detail = await scFetch(`/api/products/${encodeURIComponent(productId)}.json`);
+    const raw = detail.product || detail || {};
+    if (!raw || !raw.id) return null;
+    try {
+      const locData = await scFetch(`/api/products/${encodeURIComponent(productId)}/inventory_locations`);
+      raw.inventory_locations = locData.inventory_locations || raw.inventory_locations || [];
+    } catch {}
+    return normalizeLegacyProduct(raw);
+  } catch (e) {
+    if ([400,404].includes(e.status)) return null;
+    throw e;
+  }
 }
 
 function applyManifestMatch(product, match) {
@@ -344,7 +369,10 @@ function applyManifestMatch(product, match) {
   // AND no available quantity (the not-yet-submitted pattern).
   const hasProductLocations = Array.isArray(product.locations) && product.locations.length > 0;
   const hasProductQuantity = Number(product.quantity_available || 0) > 0;
-  if (!hasProductLocations && !hasProductQuantity && batchLocation) {
+  const batchWasSubmitted = Number(listing.quantity_listed || 0) > 0;
+  product.batch_quantity_listed = Number(listing.quantity_listed || 0);
+  product.batch_was_submitted = batchWasSubmitted;
+  if (!batchWasSubmitted && !hasProductLocations && !hasProductQuantity && batchLocation) {
     const qty = Number(listing.quantity ?? listing.quantity_available ?? 0);
     product.locations = [{
       id: '',
@@ -369,7 +397,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.26.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.27.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -388,6 +416,16 @@ app.get('/api/lookup', async (req, res) => {
     let manifestMatch = null;
     try { manifestMatch = await findManifestForCode(code); } catch (e) {
       console.warn('Manifest lookup failed:', e.message);
+    }
+
+    if (manifestMatch && Number(manifestMatch.listing?.quantity_listed || 0) > 0 && manifestMatch.listing?.product_id) {
+      // Submitted Batch listing: follow the exact linked Product ID. This avoids
+      // accidentally selecting a draft/duplicate Products row that shares the SKU.
+      const submittedProduct = await lookupProductById(manifestMatch.listing.product_id);
+      if (submittedProduct) {
+        product = submittedProduct;
+        product.submitted_from_batch = true;
+      }
     }
 
     if (product) {
@@ -443,6 +481,9 @@ app.get('/api/batch-diagnostic', async (req, res) => {
       listing_sku:x.sku||'',
       location:x.location||x.item_location||'',
       quantity:Number(x.quantity ?? x.quantity_available ?? 0),
+      quantity_listed:Number(x.quantity_listed || 0),
+      list_status:x.list_status || '',
+      considered_submitted:Number(x.quantity_listed || 0) > 0,
       url:match.url
     });
   } catch(e) {
