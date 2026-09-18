@@ -270,10 +270,91 @@ async function lookupLegacy(code) {
   return null;
 }
 
+
+async function findManifestForCode(code) {
+  const needle = String(code || '').trim().toLowerCase();
+  if (!needle) return null;
+
+  // SellerChamp's marketplace "Batches" UI is backed by the documented
+  // Manifests/Product Listings API. Search newest manifests first, then inspect
+  // their listing rows for an exact SKU/UPC/ASIN match.
+  const pageSize = 100;
+  for (let page = 1; page <= 5; page++) {
+    let data;
+    try {
+      data = await scFetch(`/api/manifests?page=${page}&page_size=${pageSize}`);
+    } catch (e) {
+      if ([400,404].includes(e.status)) return null;
+      throw e;
+    }
+    const manifests = data.manifests || data.manifest || [];
+    const list = Array.isArray(manifests) ? manifests : (manifests ? [manifests] : []);
+    if (!list.length) break;
+
+    for (const manifest of list) {
+      if (!manifest?.id) continue;
+      for (let lp = 1; lp <= 10; lp++) {
+        let listingData;
+        try {
+          listingData = await scFetch(`/api/manifests/${encodeURIComponent(manifest.id)}/product_listings?page=${lp}&page_size=100`);
+        } catch (e) {
+          if ([400,404].includes(e.status)) break;
+          throw e;
+        }
+        const rows = listingData.product_listings || [];
+        const match = rows.find(x => [x.sku, x.upc, x.asin, x.catalogue_sku, x.custom_catalogue_sku]
+          .filter(Boolean).some(v => String(v).trim().toLowerCase() === needle));
+        if (match) {
+          return {
+            manifest_id: manifest.id,
+            manifest_name: manifest.name || '',
+            manifest_status: manifest.status || '',
+            listing: match,
+            // Existing SellerChamp UI route used elsewhere in this app.
+            url: `https://app.sellerchamp.com/manifests/${encodeURIComponent(manifest.id)}`
+          };
+        }
+        if (rows.length < 100) break;
+      }
+    }
+    if (list.length < pageSize) break;
+  }
+  return null;
+}
+
+function applyManifestMatch(product, match) {
+  if (!product || !match) return product;
+  const listing = match.listing || {};
+  product.manifest_id = match.manifest_id;
+  product.manifest_name = match.manifest_name;
+  product.manifest_status = match.manifest_status;
+  product.sellerchamp_batch_url = match.url;
+  product.batch_listing_id = listing.id || '';
+  product.batch_found = true;
+
+  // For an unsubmitted item, Products may legitimately show zero/no locations.
+  // Use the manifest listing's own location/quantity for warehouse display.
+  if ((!product.locations || !product.locations.length) && listing.location) {
+    const qty = Number(listing.quantity_available ?? listing.quantity ?? 0);
+    product.locations = [{
+      id: '',
+      location: listing.location,
+      quantity_available: qty,
+      priority: 1,
+      delete_if_empty: false,
+      source: 'batch'
+    }];
+    product.location_source = 'batch';
+  }
+  if (!product.title && listing.title) product.title = listing.title;
+  if (!product.sku && listing.sku) product.sku = listing.sku;
+  return product;
+}
+
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.15.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.16.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -283,27 +364,47 @@ app.get('/api/lookup', async (req, res) => {
   const code = String(req.query.code || '').trim();
   if (!code) return res.status(400).json({ error: 'Enter or scan an SKU/barcode.' });
   try {
-    // Prefer the standard SellerChamp product record whenever possible.
-    // It exposes the authoritative item_remarks field and inventory-location ID,
-    // allowing a full move to rename the existing location and prepend Notes reliably.
-    const legacy = await lookupLegacy(code);
-    if (legacy) return res.json({ product: legacy });
+    let product = await lookupLegacy(code);
+    if (!product) product = await lookupCatalog(code);
 
-    // Catalog Sync is a fallback for catalogue SKU-only records / partial transfers.
-    const catalog = await lookupCatalog(code);
-    if (catalog) {
-      // Try to associate a standard product for Notes when the scanned identifier
-      // also happens to match SKU/UPC/ASIN. If no match exists, the UI will report
-      // that the inventory move worked but Notes could not be updated.
-      try {
-        const notesProduct = await getLegacyProductForNotes(code);
-        if (notesProduct) {
-          catalog.notes_product_id = notesProduct.id;
-          catalog.item_remarks = notesProduct.item_remarks || '';
-        }
-      } catch {}
-      return res.json({ product: catalog });
+    // Always resolve the originating SellerChamp marketplace Batch/Manifest.
+    // This is especially important for not-yet-submitted listings, whose Products
+    // record can still show zero quantity and no inventory location.
+    let manifestMatch = null;
+    try { manifestMatch = await findManifestForCode(code); } catch (e) {
+      console.warn('Manifest lookup failed:', e.message);
     }
+
+    if (product) {
+      applyManifestMatch(product, manifestMatch);
+      return res.json({ product });
+    }
+
+    // A listing can exist in an unsubmitted manifest before a usable Products
+    // record exists. Still return it so the exact Batch button and location show.
+    if (manifestMatch) {
+      const x = manifestMatch.listing || {};
+      const qty = Number(x.quantity_available ?? x.quantity ?? 0);
+      return res.json({ product: {
+        mode: 'batch',
+        id: x.product_id || x.id || '',
+        sku: x.sku || code,
+        catalogue_sku: x.catalogue_sku || x.custom_catalogue_sku || '',
+        upc: x.upc || '',
+        asin: x.asin || '',
+        title: x.title || '',
+        image: x.primary_image || x.image_url || '',
+        locations: x.location ? [{id:'',location:x.location,quantity_available:qty,source:'batch'}] : [],
+        manifest_id: manifestMatch.manifest_id,
+        manifest_name: manifestMatch.manifest_name,
+        manifest_status: manifestMatch.manifest_status,
+        batch_listing_id: x.id || '',
+        batch_found: true,
+        location_source: 'batch',
+        sellerchamp_batch_url: manifestMatch.url
+      }});
+    }
+
     res.status(404).json({ error: `No SellerChamp item matched “${code}”.` });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'SellerChamp lookup failed.', details: e.data || e.message });
@@ -316,6 +417,9 @@ app.post('/api/move', async (req, res) => {
   if (String(fromLocation).trim().toLowerCase() === String(toLocation).trim().toLowerCase()) return res.status(400).json({ error: 'The new location is the same as the current location.' });
 
   try {
+    if (mode === 'batch') {
+      return res.status(409).json({ error: 'This location comes from an unsubmitted SellerChamp Batch. Open the exact Batch to change it there.' });
+    }
     if (mode === 'catalog') {
       const body = {
         master_product_id: productId,

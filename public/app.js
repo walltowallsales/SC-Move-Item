@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.15.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.16.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -60,7 +60,9 @@ function showProduct(){
   const productBtn=$('openProductBtn'), batchBtn=$('openBatchBtn');
   const skuForLink=p.sku||p.catalogue_sku||p.upc||'';
   productBtn.dataset.url=skuForLink?`https://app2.sellerchamp.com/products?product%5Bquery%5D=${encodeURIComponent(skuForLink)}`:'';
-  batchBtn.dataset.url=p.sellerchamp_batch_url||'https://app.sellerchamp.com/manifests';
+  batchBtn.dataset.url=p.sellerchamp_batch_url||'';
+  batchBtn.disabled=!p.sellerchamp_batch_url;
+  batchBtn.title=p.batch_found?(p.manifest_name?`Open batch: ${p.manifest_name}`:'Open originating SellerChamp batch'):'No originating batch was found';
   productBtn.disabled=!skuForLink;
   if(p.image){
     $('productImage').src=p.image;
@@ -88,7 +90,12 @@ function showProduct(){
   locations.forEach((l,i)=>{const o=new Option(`${l.location} — Qty ${l.quantity_available}`,String(i));sel.add(o)});
   sel.value=locations.length?'0':''; updateSourceQty();
   $('moveAll').checked=true;$('partialQtyWrap').classList.add('hidden');$('toLocation').value='';
-  $('moveAll').disabled=p.mode==='legacy';
+  $('moveAll').disabled=p.mode==='legacy' || p.mode==='batch';
+  $('moveBtn').disabled=p.mode==='batch';
+  if(p.mode==='batch'){
+    $('qtyControls').title='This location is from an unsubmitted SellerChamp Batch.';
+    toast(`Found in SellerChamp Batch${p.manifest_name?`: ${p.manifest_name}`:''}. Use SellerChamp Batch to change this unsubmitted item.`);
+  }
   if(p.mode==='legacy'){$('moveAll').checked=true;$('qtyControls').title='Partial transfers require Catalog Sync.';}
   else $('qtyControls').title='';
 
