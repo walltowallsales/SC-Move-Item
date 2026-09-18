@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.6.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.8.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -59,10 +59,9 @@ function showProduct(){
   $('title').textContent=p.title||'Untitled item';
   const productBtn=$('openProductBtn'), batchBtn=$('openBatchBtn');
   const skuForLink=p.sku||p.catalogue_sku||p.upc||'';
-  productBtn.dataset.url=p.sellerchamp_product_url||`https://app.sellerchamp.com/products?sku=${encodeURIComponent(skuForLink)}`;
+  productBtn.dataset.url=skuForLink?`https://sellerchamp.com/products?search=${encodeURIComponent(skuForLink)}`:'';
   batchBtn.dataset.url=p.sellerchamp_batch_url||'https://app.sellerchamp.com/manifests';
   productBtn.disabled=!skuForLink;
-  $('modeBadge').textContent=p.mode==='catalog'?'Catalog Sync transfer':'Standard SellerChamp location';
   if(p.image){
     $('productImage').src=p.image;
     $('productImage').classList.remove('hidden');
@@ -144,66 +143,5 @@ function addHistory(item){state.history.unshift(item);state.history=state.histor
 function renderHistory(){const h=$('history');if(!state.history.length){h.className='history empty';h.textContent='No moves yet.';return}h.className='history';h.innerHTML=state.history.map(x=>`<div class="history-item"><div class="history-top"><span>${escapeHtml(x.sku||'Item')}</span><span class="history-time">${new Date(x.time).toLocaleString()}</span></div><div class="history-route">${escapeHtml(x.from)} → <strong>${escapeHtml(x.to)}</strong> · Qty ${Number(x.qty||0)}</div></div>`).join('');}
 function escapeHtml(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 $('clearHistory').onclick=()=>{state.history=[];localStorage.removeItem('moveHistory');renderHistory();};
-
-$('cameraBtn').onclick=()=>startCamera('item');
-$('locationCameraBtn').onclick=()=>startCamera('location');
-$('stopCamera').onclick=stopCamera;
-let zxingReader = null;
-let cameraTarget = 'item';
-
-async function startCamera(target='item'){
-  cameraTarget=target;
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    return toast('Camera access is not available in this browser.','error');
-  }
-  if(typeof ZXing==='undefined' || !ZXing.BrowserMultiFormatReader){
-    return toast('The camera scanner did not load. Check your internet connection and reload the page.','error');
-  }
-  stopCamera();
-  $('cameraWrap').classList.remove('hidden');
-  $('stopCamera').textContent=target==='location'?'Stop destination scan':'Stop Camera';
-  try{
-    zxingReader=new ZXing.BrowserMultiFormatReader();
-    await zxingReader.decodeFromVideoDevice(undefined,$('camera'),(result,err)=>{
-      if(!result)return;
-      const value=(result.getText?result.getText():result.text||'').trim();
-      if(!value)return;
-      const thisTarget=cameraTarget;
-      stopCamera();
-      if(thisTarget==='location'){
-        $('toLocation').value=value;
-        loadLocationSuggestions();
-        if(state.rapid){
-          toast(`Destination scanned: ${value}`,'success');
-          setTimeout(()=>moveItem(),150);
-        } else {
-          toast(`Destination scanned: ${value}`,'success');
-          $('moveBtn').focus();
-        }
-      } else {
-        $('lookup').value=value;
-        toast(`Barcode scanned: ${value}`,'success');
-        findItem();
-      }
-    });
-  }catch(e){
-    stopCamera();
-    const name=e && e.name ? e.name : '';
-    if(name==='NotAllowedError' || name==='PermissionDeniedError'){
-      toast('Camera permission was denied. In iPhone Settings, allow Safari camera access, then try again.','error');
-    } else {
-      toast('Could not open the camera. Make sure no other app is using it and camera permission is allowed.','error');
-    }
-  }
-}
-function stopCamera(){
-  if(detectorTimer)clearTimeout(detectorTimer);
-  detectorTimer=null;
-  if(zxingReader){try{zxingReader.reset();}catch{} zxingReader=null;}
-  const video=$('camera');
-  if(video && video.srcObject){try{video.srcObject.getTracks().forEach(t=>t.stop());}catch{} video.srcObject=null;}
-  if(cameraStream){try{cameraStream.getTracks().forEach(t=>t.stop());}catch{} cameraStream=null;}
-  $('cameraWrap').classList.add('hidden');
-}
 
 checkStatus();$('lookup').focus();
