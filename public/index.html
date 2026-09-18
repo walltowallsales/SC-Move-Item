@@ -13,7 +13,7 @@
       <div>
         <div class="eyebrow">Stuff2Sell warehouse tool</div>
         <h1>Location Mover</h1>
-        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.2.0</div>
+        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.5.0</div>
       </div>
       <div id="connection" class="status neutral">Checking…</div>
     </header>
@@ -50,11 +50,16 @@
         </div>
       </div>
 
-      <label for="fromLocation">2. Current location</label>
+      <div class="inventory-summary">
+        <div class="inventory-heading">2. Current locations & quantities</div>
+        <div id="allLocations" class="location-list"></div>
+      </div>
+
+      <label for="fromLocation">Move from location</label>
       <select id="fromLocation"></select>
       <div id="sourceQty" class="quantity-line"></div>
 
-      <label for="toLocation">3. New location</label>
+      <label for="toLocation">3. New Location</label>
       <input id="toLocation" list="locationSuggestions" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Example: B-07-2" />
       <datalist id="locationSuggestions"></datalist>
       <button id="locationCameraBtn" class="ghost">📷 Scan destination with camera</button>

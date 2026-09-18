@@ -1,4 +1,4 @@
-# SellerChamp Location Mover v2.2.0
+# SellerChamp Location Mover v2.5.0
 
 This build fixes relocation + Notes behavior by preferring SellerChamp's standard product record when an item can be found by SKU/UPC/ASIN. A full move updates the existing inventory-location record (so the old location is replaced) and prepends `Previously on OLD-LOCATION - ` to `item_remarks`. Catalog Sync remains available as a fallback.
 
@@ -62,4 +62,8 @@ Version 1.1 uses ZXing in the browser for camera barcode scanning, including iPh
 
 
 ## Relocation history
-On each successful move, the app prepends `Previously on OLD-LOCATION - ` to SellerChamp's `item_remarks` field without replacing the existing remarks. Full-quantity moves relocate the stock from the old bin to the new bin; partial Catalog Sync transfers leave any remaining quantity at the source bin.
+On each successful move, the app prepends `Previously on OLD-LOCATION - ` to the actual SellerChamp listing-card **Notes** field when that field is exposed by the product API. Because SellerChamp does not publicly document that Notes field, v2.4 discovers its real API key from the live product response and verifies the saved value. `item_remarks` is no longer used for this history. Full-quantity moves relocate the stock from the old bin to the new bin; partial Catalog Sync transfers leave any remaining quantity at the source bin.
+
+
+## v2.5.0
+After lookup, shows a larger product photo, prominent SKU, title, every returned inventory location with quantity, and automatically focuses the 3. New Location field for immediate scanner/keyboard input.

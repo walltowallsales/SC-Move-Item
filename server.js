@@ -58,9 +58,11 @@ function normalizeMasterProduct(p) {
     upc: p.upc || '',
     asin: p.asin || '',
     title: p.title || '',
-    image: p.primary_image || p.images?.[0]?.large_url || p.images?.[0]?.image_url || '',
+    image: p.primary_image || p.primary_image_url || p.image_url || p.image ||
+      p.images?.[0]?.large_url || p.images?.[0]?.image_url || p.images?.[0]?.url || '',
     quantity_available: Number(p.quantity_available || 0),
     item_remarks: p.item_remarks || '',
+    ebay_item_condition_id: p.ebay_item_condition_id ?? null,
     notes_product_id: p.id,
     locations: (p.inventory_locations || []).map(x => ({
       id: x.id || '',
@@ -79,9 +81,12 @@ function normalizeLegacyProduct(p) {
     upc: p.upc || '',
     asin: p.asin || '',
     title: p.title || '',
-    image: p.product_images?.[0]?.large_image_url || p.product_images?.[0]?.original_image_url || '',
+    image: p.primary_image || p.primary_image_url || p.image_url || p.image ||
+      p.product_images?.[0]?.large_image_url || p.product_images?.[0]?.original_image_url ||
+      p.product_images?.[0]?.image_url || p.product_images?.[0]?.url || '',
     quantity_available: Number(p.quantity_available || 0),
     item_remarks: p.item_remarks || '',
+    ebay_item_condition_id: p.ebay_item_condition_id ?? null,
     notes_product_id: p.id,
     locations: (p.inventory_locations || []).map(x => ({
       id: x.id || '',
@@ -101,27 +106,95 @@ async function getLegacyProductForNotes(code) {
   } : null;
 }
 
-async function prependPreviousLocation(notesProductId, oldLocation, knownRemarks = '') {
+function discoverNotesField(product) {
+  if (!product || typeof product !== 'object') return null;
+
+  // SellerChamp's public docs do not document the listing-card "Notes" field.
+  // Prefer likely internal field names, then fall back to any top-level string
+  // field whose key contains "note" (excluding item_remarks, which is a
+  // different condition/remarks field).
+  const preferred = [
+    'notes',
+    'product_notes',
+    'internal_notes',
+    'item_notes',
+    'listing_notes',
+    'seller_notes',
+    'private_notes'
+  ];
+
+  for (const key of preferred) {
+    if (Object.prototype.hasOwnProperty.call(product, key) && typeof product[key] === 'string') {
+      return { field: key, value: product[key] };
+    }
+  }
+
+  for (const [key, value] of Object.entries(product)) {
+    if (key === 'item_remarks') continue;
+    if (/note/i.test(key) && typeof value === 'string') return { field: key, value };
+  }
+  return null;
+}
+
+async function prependPreviousLocation(notesProductId, oldLocation) {
   if (!notesProductId) {
-    return { updated: false, warning: 'No standard SellerChamp listing was found for updating Notes.' };
+    return { updated: false, verified: false, warning: 'No standard SellerChamp listing was found for updating Notes.' };
   }
 
-  let currentRemarks = String(knownRemarks || '');
-  try {
-    const detail = await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`);
-    const product = detail.product || detail;
-    if (product && typeof product.item_remarks === 'string') currentRemarks = product.item_remarks;
-  } catch (e) {
-    // The lookup response already supplied remarks; use those if detail fetch is unavailable.
+  // Read the live product first so the existing Notes text is never overwritten.
+  const detail = await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`);
+  const product = detail.product || detail || {};
+  const discovered = discoverNotesField(product);
+
+  if (!discovered) {
+    return {
+      updated: false,
+      verified: false,
+      warning: 'SellerChamp did not expose the listing-card Notes field in this product API response. The location was moved, but Notes were left unchanged.',
+      visible_note_fields: Object.keys(product).filter(k => /note|remark/i.test(k))
+    };
   }
 
+  const notesField = discovered.field;
+  const currentNotes = discovered.value || '';
   const prefix = `Previously on ${String(oldLocation).trim()} - `;
-  const newRemarks = prefix + currentRemarks;
+  const newNotes = currentNotes.startsWith(prefix) ? currentNotes : prefix + currentNotes;
+
   await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`, {
     method: 'PUT',
-    body: JSON.stringify({ product: { item_remarks: newRemarks } })
+    body: JSON.stringify({ product: { [notesField]: newNotes } })
   });
-  return { updated: true, item_remarks: newRemarks };
+
+  // Verify by rereading the product and rediscovering the Notes field.
+  let verify = await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`);
+  let verifiedProduct = verify.product || verify || {};
+  let verified = discoverNotesField(verifiedProduct);
+  if (verified && verified.field === notesField && String(verified.value || '') === newNotes) {
+    return { updated: true, verified: true, method: 'product_put', notes_field: notesField, notes: newNotes };
+  }
+
+  // Retry via bulk update. SellerChamp may accept more product attributes there
+  // than are explicitly documented in the single-product endpoint.
+  await scFetch('/api/products/bulk_update.json', {
+    method: 'PUT',
+    body: JSON.stringify({ products: [{ id: notesProductId, [notesField]: newNotes }] })
+  });
+
+  verify = await scFetch(`/api/products/${encodeURIComponent(notesProductId)}.json`);
+  verifiedProduct = verify.product || verify || {};
+  verified = discoverNotesField(verifiedProduct);
+  if (verified && verified.field === notesField && String(verified.value || '') === newNotes) {
+    return { updated: true, verified: true, method: 'bulk_update', notes_field: notesField, notes: newNotes };
+  }
+
+  return {
+    updated: false,
+    verified: false,
+    notes_field: notesField,
+    warning: `SellerChamp exposed the Notes field as “${notesField}”, but did not persist the Notes update through the public product API. The location move still succeeded.`,
+    expected: newNotes,
+    actual: verified && verified.field === notesField ? String(verified.value || '') : null
+  };
 }
 
 async function lookupCatalog(code) {
@@ -160,8 +233,14 @@ async function lookupLegacy(code) {
       const items = data.products || [];
       if (items.length) {
         const exact = items.find(p => [p.sku, p.upc, p.asin].filter(Boolean).some(v => String(v).toLowerCase() === code.toLowerCase()));
-        const p = exact || items[0];
-        // Get authoritative location list because list responses may omit/lag it.
+        let p = exact || items[0];
+        // Fetch full product detail when available so title/photo fields are complete.
+        try {
+          const detail = await scFetch(`/api/products/${encodeURIComponent(p.id)}.json`);
+          const full = detail.product || detail || {};
+          p = { ...p, ...full };
+        } catch {}
+        // Get authoritative location list because list/detail responses may omit/lag it.
         try {
           const locData = await scFetch(`/api/products/${encodeURIComponent(p.id)}/inventory_locations`);
           p.inventory_locations = locData.inventory_locations || p.inventory_locations || [];
@@ -178,7 +257,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.2.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.5.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -240,7 +319,7 @@ app.post('/api/move', async (req, res) => {
 
       let notes = { updated: false };
       try {
-        notes = await prependPreviousLocation(notesProductId, fromLocation, currentRemarks);
+        notes = await prependPreviousLocation(notesProductId, fromLocation);
       } catch (noteError) {
         notes = { updated: false, warning: 'Inventory moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
       }
@@ -269,7 +348,7 @@ app.post('/api/move', async (req, res) => {
 
       let notes = { updated: false };
       try {
-        notes = await prependPreviousLocation(notesProductId || productId, fromLocation, currentRemarks);
+        notes = await prependPreviousLocation(notesProductId || productId, fromLocation);
       } catch (noteError) {
         notes = { updated: false, warning: 'Location moved, but SellerChamp Notes could not be updated.', details: noteError.data || noteError.message };
       }

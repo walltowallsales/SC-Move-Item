@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.2.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.5.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -52,18 +52,39 @@ async function findItem(){
 
 function showProduct(){
   const p=currentProduct; $('productCard').classList.remove('hidden');
-  $('sku').textContent=p.sku||p.catalogue_sku||p.upc||''; $('title').textContent=p.title||'Untitled item';
+  const sku=p.sku||p.catalogue_sku||p.upc||'—';
+  $('sku').textContent=`SKU  ${sku}`;
+  $('title').textContent=p.title||'Untitled item';
   $('modeBadge').textContent=p.mode==='catalog'?'Catalog Sync transfer':'Standard SellerChamp location';
-  if(p.image){$('productImage').src=p.image;$('productImage').classList.remove('hidden')}else $('productImage').classList.add('hidden');
+  if(p.image){
+    $('productImage').src=p.image;
+    $('productImage').classList.remove('hidden');
+    $('productImage').onerror=()=>{$('productImage').classList.add('hidden');};
+  }else $('productImage').classList.add('hidden');
+
+  const locations=Array.isArray(p.locations)?p.locations:[];
+  const all=$('allLocations');
+  if(!locations.length){
+    all.innerHTML='<div class="location-empty">No inventory locations found.</div>';
+  } else {
+    all.innerHTML=locations.map(l=>`<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-qty">Qty ${Number(l.quantity_available||0)}</span></div>`).join('');
+  }
+
   const sel=$('fromLocation'); sel.innerHTML='';
-  if(!p.locations.length){const o=new Option('No inventory location found','');sel.add(o);}
-  p.locations.forEach((l,i)=>{const o=new Option(`${l.location} — Qty ${l.quantity_available}`,String(i));sel.add(o)});
-  sel.value=p.locations.length?'0':''; updateSourceQty();
+  if(!locations.length){const o=new Option('No inventory location found','');sel.add(o);}
+  locations.forEach((l,i)=>{const o=new Option(`${l.location} — Qty ${l.quantity_available}`,String(i));sel.add(o)});
+  sel.value=locations.length?'0':''; updateSourceQty();
   $('moveAll').checked=true;$('partialQtyWrap').classList.add('hidden');$('toLocation').value='';
   $('moveAll').disabled=p.mode==='legacy';
   if(p.mode==='legacy'){$('moveAll').checked=true;$('qtyControls').title='Partial transfers require Catalog Sync.';}
   else $('qtyControls').title='';
-  $('toLocation').focus();
+
+  // Warehouse flow: after an item is scanned/found, the next keystroke or
+  // Bluetooth scanner input should go straight into New Location.
+  requestAnimationFrame(()=>{
+    $('toLocation').focus({preventScroll:true});
+    try{$('toLocation').select();}catch{}
+  });
 }
 
 $('fromLocation').onchange=updateSourceQty;
@@ -87,7 +108,10 @@ async function moveItem(){
     const result=await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id,notesProductId:currentProduct.notes_product_id||currentProduct.id,currentRemarks:currentProduct.item_remarks||''})});
     addHistory({sku:currentProduct.sku||currentProduct.catalogue_sku,title:currentProduct.title,from:source.location,to:destination,qty:all?source.quantity_available:qty,time:new Date().toISOString()});
     if(result.notes?.warning) toast(`Moved successfully, but Notes update failed: ${result.notes.warning}`,'error');
-    else toast(`Relocated ${currentProduct.sku||'item'}: ${source.location} → ${destination} · old location replaced · Notes prepended`,'success');
+    else {
+      const field = result.notes?.notes_field ? ` (${result.notes.notes_field})` : '';
+      toast(`Relocated ${currentProduct.sku||'item'}: ${source.location} → ${destination} · old location replaced · Notes prepended${field}`,'success');
+    }
     if(state.rapid) clearForNext(); else { $('lookup').value=currentProduct.sku||currentProduct.catalogue_sku||''; await findItem(); }
   }catch(e){toast(e.message,'error');}
   finally{busy($('moveBtn'),false);}
