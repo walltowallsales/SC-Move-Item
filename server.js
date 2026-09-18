@@ -273,7 +273,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.13.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.14.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -311,7 +311,7 @@ app.get('/api/lookup', async (req, res) => {
 });
 
 app.post('/api/move', async (req, res) => {
-  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId } = req.body || {};
+  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId, sku, title } = req.body || {};
   if (!productId || !fromLocation || !toLocation) return res.status(400).json({ error: 'Product, source location, and destination location are required.' });
   if (String(fromLocation).trim().toLowerCase() === String(toLocation).trim().toLowerCase()) return res.status(400).json({ error: 'The new location is the same as the current location.' });
 
@@ -333,12 +333,15 @@ app.post('/api/move', async (req, res) => {
         method: 'POST', body: JSON.stringify(body)
       });
 
-      const log = await logChange({
-        app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
-        oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
-        quantity:allQuantity ? '' : Number(quantity),
-        details:allQuantity ? 'Moved all quantity from source location' : ''
-      });
+      let log={logged:false};
+      try {
+        log=await logChange({
+          app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
+          oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
+          quantity:allQuantity ? '' : Number(quantity),
+          details:allQuantity ? 'Moved all quantity from source location' : ''
+        });
+      } catch(e) { log={logged:false,warning:e.message||'Google Sheets logging failed'}; }
       return res.json({ok:true,mode:'catalog',result:data,log});
     }
 
@@ -362,12 +365,15 @@ app.post('/api/move', async (req, res) => {
         method: 'PUT', body: JSON.stringify(payload)
       });
 
-      const log = await logChange({
-        app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
-        oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
-        quantity:Number(source.quantity_available||0),
-        details:'Moved full quantity from source location'
-      });
+      let log={logged:false};
+      try {
+        log=await logChange({
+          app:'Location Mover', action:'Location Move', sku:sku||'', title:title||'',
+          oldLocation:String(fromLocation).trim(), newLocation:String(toLocation).trim(),
+          quantity:Number(source.quantity_available||0),
+          details:'Moved full quantity from source location'
+        });
+      } catch(e) { log={logged:false,warning:e.message||'Google Sheets logging failed'}; }
       return res.json({ok:true,mode:'legacy',result:data,log});
     }
 
