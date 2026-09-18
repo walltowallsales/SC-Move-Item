@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.21.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.22.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -100,11 +100,11 @@ function showProduct(){
   sel.value=locations.length?'0':''; updateSourceQty();
   $('moveAll').checked=true;$('partialQtyWrap').classList.add('hidden');$('toLocation').value='';
   $('moveAll').disabled=p.mode==='legacy' || p.mode==='batch';
-  $('moveBtn').disabled=false;
+  $('moveBtn').disabled=p.mode==='batch';
   if(p.mode==='batch'){
     $('moveAll').checked=true;
-    $('qtyControls').title='Batch items currently move the full quantity.';
-    toast(`Found in SellerChamp Batch${p.manifest_name?`: ${p.manifest_name}`:''}. Ready to move the full quantity.`);
+    $('qtyControls').title='Batch location changes are temporarily disabled for safety.';
+    toast(`Found in SellerChamp Batch${p.manifest_name?`: ${p.manifest_name}`:''}. Batch MOVE is disabled; use the SellerChamp Batch button to edit it safely.`);
   }
   if(p.mode==='legacy'){$('moveAll').checked=true;$('qtyControls').title='Partial transfers require Catalog Sync.';}
   else $('qtyControls').title='';

@@ -359,7 +359,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.21.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.22.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -443,47 +443,9 @@ app.get('/api/batch-diagnostic', async (req, res) => {
 app.post('/api/move', async (req, res) => {
   const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId, manifestId, batchListingId, sku, title } = req.body || {};
   if (mode === 'batch') {
-    try {
-      if (!manifestId || !batchListingId) return res.status(409).json({error:'SellerChamp Batch listing ID is missing. Look the item up again.'});
-      let listing=null;
-      for (let page=1; page<=20 && !listing; page++) {
-        const d=await scFetch(`/api/manifests/${encodeURIComponent(manifestId)}/product_listings?page=${page}&page_size=100`);
-        let rows=d.product_listings || d.product_listing || [];
-        if(!Array.isArray(rows)) rows=rows?[rows]:[];
-        listing=rows.find(x=>String(x.id||'')===String(batchListingId));
-        if(rows.length<100) break;
-      }
-      if(!listing) return res.status(404).json({error:'The SellerChamp Batch listing could not be found. Look the item up again.'});
-      const actualFrom=String(listing.item_location || listing.location || '').trim();
-      if(actualFrom && String(fromLocation||'').trim() && actualFrom.toLowerCase()!==String(fromLocation).trim().toLowerCase())
-        return res.status(409).json({error:`SellerChamp now shows this Batch item at ${actualFrom}. Look it up again before moving it.`});
-      const qty=Number(listing.quantity ?? 0);
-      if(!allQuantity && Number(quantity)!==qty)
-        return res.status(409).json({error:'Partial quantity moves are not enabled for Batch items. Move all quantity from this Batch location.'});
-
-      const attrs={id:listing.id,sku:listing.sku||sku||'',title:listing.title||title||'',quantity:qty,item_location:String(toLocation||'').trim()};
-      for(const k of ['asin','upc','item_condition']) if(listing[k]) attrs[k]=listing[k];
-
-      await scFetch(`/api/manifests/${encodeURIComponent(manifestId)}/product_listings`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({product_listings_attributes:[attrs]})
-      });
-
-      let verified=null;
-      for(let page=1;page<=20 && !verified;page++){
-        const d=await scFetch(`/api/manifests/${encodeURIComponent(manifestId)}/product_listings?page=${page}&page_size=100`);
-        let rows=d.product_listings||d.product_listing||[]; if(!Array.isArray(rows)) rows=rows?[rows]:[];
-        verified=rows.find(x=>String(x.id||'')===String(batchListingId));
-        if(rows.length<100) break;
-      }
-      const newLoc=String(verified?.item_location||verified?.location||'').trim();
-      if(!verified || newLoc.toLowerCase()!==String(toLocation||'').trim().toLowerCase())
-        return res.status(409).json({error:'SellerChamp did not confirm the Batch location change. No success was reported.'});
-
-      let log={logged:false};
-      try{log=await logChange({app:'Location Mover',action:'Batch Location Move',sku:sku||listing.sku||'',title:title||listing.title||'',oldLocation:actualFrom||fromLocation||'',newLocation:newLoc,quantity:qty,details:`Updated Batch/Manifest ${manifestId} product listing ${batchListingId}`});}catch{}
-      return res.json({success:true,mode:'batch',quantity:qty,from:actualFrom||fromLocation,to:newLoc,log});
-    }catch(e){return res.status(e.status||500).json({error:'SellerChamp Batch move failed.',details:e.data||e.message});}
+    return res.status(409).json({
+      error:'Batch location moves are temporarily disabled for safety. Open the SellerChamp Batch and edit the existing listing there.'
+    });
   }
 
   if (!productId || !fromLocation || !toLocation) return res.status(400).json({ error: 'Product, source location, and destination location are required.' });
