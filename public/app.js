@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.17.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.18.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -40,7 +40,13 @@ $('savePin').onclick=()=>{state.pin=$('pin').value.trim();sessionStorage.setItem
 $('lookup').addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();findItem();} });
 $('findBtn').onclick=findItem;
 $('openProductBtn').onclick=()=>{const u=$('openProductBtn').dataset.url;if(u)window.open(u,'_blank','noopener');};
-$('openBatchBtn').onclick=()=>{const u=$('openBatchBtn').dataset.url;if(u)window.open(u,'_blank','noopener');};
+$('openBatchBtn').onclick=async()=>{
+  const u=$('openBatchBtn').dataset.url;
+  if(!u)return;
+  const sku=currentProduct?.sku||currentProduct?.catalogue_sku||currentProduct?.upc||'';
+  try{ if(sku && navigator.clipboard) await navigator.clipboard.writeText(sku); }catch{}
+  window.open(u,'_blank','noopener');
+};
 
 async function findItem(){
   const code=$('lookup').value.trim(); if(!code) return toast('Scan or enter an item first.','error');
