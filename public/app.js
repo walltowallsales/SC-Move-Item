@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.24.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.25.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -88,8 +88,14 @@ function showProduct(){
       const qty=Number(l.quantity_available||0);
       const canDelete=qty===0 && l.id && p.mode==='legacy';
       const canUpdateQty=p.mode!=='batch' && l.id;
-      return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${canUpdateQty?`<button class="update-qty" type="button" data-location-index="${i}">Update Qty</button>`:''}${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
+      const qtyButton=p.mode==='batch'
+        ? `<button class="update-batch-qty" type="button">UPDATE QUANTITY<br><span class="batch-qty-sub">IN SELLERCHAMP</span></button>`
+        : (canUpdateQty?`<button class="update-qty" type="button" data-location-index="${i}">Update Qty</button>`:'');
+      return `<div class="location-row"><span class="location-name">${escapeHtml(l.location||'—')}</span><span class="location-actions"><span class="location-qty">Qty ${qty}</span>${qtyButton}${canDelete?`<button class="delete-zero" type="button" data-location-index="${i}">Delete Location</button>`:''}</span></div>`;
     }).join('');
+    all.querySelectorAll('.update-batch-qty').forEach(btn=>{
+      btn.onclick=()=>openBatchForManualUpdate();
+    });
     all.querySelectorAll('.update-qty').forEach(btn=>{
       btn.onclick=()=>updateLocationQuantity(Number(btn.dataset.locationIndex));
     });
@@ -126,6 +132,15 @@ function showProduct(){
   });
 }
 
+
+function openBatchForManualUpdate(){
+  if(!currentProduct)return toast('Find an item first.','error');
+  const u=$('openBatchBtn')?.dataset?.url || '';
+  const sku=currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'';
+  try{if(sku && navigator.clipboard) navigator.clipboard.writeText(sku);}catch{}
+  if(!u)return toast('SellerChamp Batch link is unavailable. Look the item up again.','error');
+  window.open(u,'_blank','noopener');
+}
 
 async function updateLocationQuantity(index){
   if(!currentProduct || currentProduct.mode==='batch') return toast('Batch quantities must be changed in SellerChamp.','error');
@@ -184,11 +199,7 @@ $('moveBtn').onclick=moveItem;
 async function moveItem(){
   if(!currentProduct)return toast('Find an item first.','error');
   if(currentProduct.mode==='batch'){
-    const u=$('openBatchBtn')?.dataset?.url || '';
-    const sku=currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'';
-    try{if(sku && navigator.clipboard) navigator.clipboard.writeText(sku);}catch{}
-    if(!u)return toast('SellerChamp Batch link is unavailable. Look the item up again.','error');
-    window.open(u,'_blank','noopener');
+    openBatchForManualUpdate();
     return;
   } const source=selectedLocation(); if(!source)return toast('This item has no source location to move.','error');
   let destination=$('toLocation').value.trim(); if(!destination)return toast('Enter or scan the new location.','error');
