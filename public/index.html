@@ -13,7 +13,7 @@
       <div>
         <div class="eyebrow">Stuff2Sell warehouse tool</div>
         <h1>Location Mover</h1>
-        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.29.0</div>
+        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.30.0</div>
       </div>
       <div id="connection" class="status neutral">Checking…</div>
     </header>
@@ -91,7 +91,20 @@
       <div id="history" class="history empty">No moves yet.</div>
     </section>
 
-    <div id="moveConfirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div id="qtyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="qtyModalTitle">
+  <div class="modal-card">
+    <h2 id="qtyModalTitle">Update Quantity</h2>
+    <div id="qtyModalLocation" class="confirm-text"></div>
+    <label for="qtyModalInput">New total quantity</label>
+    <input id="qtyModalInput" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" autocomplete="off" />
+    <div class="qty-modal-actions">
+      <button id="qtyModalCancel" type="button" class="secondary">Cancel</button>
+      <button id="qtyModalSave" type="button" class="move">Update Quantity</button>
+    </div>
+  </div>
+</div>
+
+<div id="moveConfirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
       <div class="modal-card">
         <h2 id="confirmTitle">Move Complete</h2>
         <div id="confirmText" class="confirm-text"></div>

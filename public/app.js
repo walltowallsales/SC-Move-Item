@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.29.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.30.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -147,27 +147,66 @@ function openBatchForManualUpdate(){
   window.open(u,'_blank','noopener');
 }
 
-async function updateLocationQuantity(index){
+let pendingQtyLocationIndex=null;
+
+function closeQtyModal(){
+  $('qtyModal').classList.add('hidden');
+  pendingQtyLocationIndex=null;
+}
+
+function openQtyModal(index){
   if(!currentProduct || currentProduct.workflow==='batch') return toast('Batch quantities must be changed in SellerChamp.','error');
   const loc=(currentProduct.locations||[])[index];
   if(!loc || !loc.id) return toast('This location cannot be updated here.','error');
-  const raw=prompt(`Update quantity at ${loc.location}\n\nCurrent quantity: ${Number(loc.quantity_available||0)}\n\nEnter the new total quantity:`,String(Number(loc.quantity_available||0)));
-  if(raw===null)return;
-  const qty=Number(String(raw).trim());
+  pendingQtyLocationIndex=index;
+  $('qtyModalLocation').textContent=`${loc.location} — Current quantity: ${Number(loc.quantity_available||0)}`;
+  $('qtyModalInput').value=String(Number(loc.quantity_available||0));
+  $('qtyModal').classList.remove('hidden');
+  requestAnimationFrame(()=>{
+    $('qtyModalInput').focus();
+    try{$('qtyModalInput').select();}catch{}
+  });
+}
+
+async function saveLocationQuantity(){
+  const index=pendingQtyLocationIndex;
+  if(index===null || !currentProduct)return;
+  const loc=(currentProduct.locations||[])[index];
+  if(!loc || !loc.id)return closeQtyModal();
+  const qty=Number(String($('qtyModalInput').value).trim());
   if(!Number.isInteger(qty) || qty<0)return toast('Quantity must be a whole number of 0 or greater.','error');
   const oldQty=Number(loc.quantity_available||0);
-  if(qty===oldQty)return toast('Quantity is already '+qty+'.');
-  if(!confirm(`Change ${loc.location} from Qty ${oldQty} to Qty ${qty}?`))return;
+  if(qty===oldQty){closeQtyModal();return toast('Quantity is already '+qty+'.');}
+  busy($('qtyModalSave'),true,'Updating…');
   try{
     await api('/api/update-location-quantity',{method:'POST',body:JSON.stringify({
       mode:currentProduct.mode,productId:currentProduct.id,locationId:loc.id,
       location:loc.location,newQuantity:qty,sku:currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'',
       title:currentProduct.title||''
     })});
-    toast(`Quantity updated: ${loc.location} — Qty ${qty}`);
-    await lookupItem(currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'');
+    const code=currentProduct.sku||currentProduct.catalogue_sku||currentProduct.upc||'';
+    closeQtyModal();
+    toast(`Quantity updated: ${loc.location} — Qty ${qty}`,'success');
+    // Refresh directly. The old code called lookupItem(), which does not exist.
+    // Using the normal lookup endpoint also keeps the fast Products-first path.
+    if(code){
+      const data=await api(`/api/lookup?code=${encodeURIComponent(code)}`);
+      currentProduct=data.product;
+      showProduct();
+    }
   }catch(e){toast(e.message,'error');}
+  finally{busy($('qtyModalSave'),false);}
 }
+
+async function updateLocationQuantity(index){
+  openQtyModal(index);
+}
+
+$('qtyModalCancel').onclick=closeQtyModal;
+$('qtyModalSave').onclick=saveLocationQuantity;
+$('qtyModalInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();saveLocationQuantity();}
+});
 
 async function deleteZeroLocation(index){
   if(!currentProduct)return;
