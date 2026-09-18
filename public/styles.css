@@ -14,3 +14,16 @@
 .location-qty{font-weight:800;white-space:nowrap;color:#374151}
 .location-empty{padding:11px 12px;color:#6b7280}
 @media(max-width:520px){.product-img{width:112px;height:112px;flex-basis:112px}.sku{font-size:21px}.product-head h2{font-size:17px}}
+
+/* v2.6 navigation + move confirmation */
+.sellerchamp-links{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 9px}
+.sc-link{padding:8px 11px;border-radius:9px;font-size:14px;font-weight:800}
+.secondary-link{background:#e5e7eb;color:#111827}
+.modal{position:fixed;inset:0;background:rgba(17,24,39,.58);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999}
+.modal.hidden{display:none}
+.modal-card{width:min(440px,100%);background:#fff;border-radius:16px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.28)}
+.modal-card h2{margin:0 0 14px;font-size:24px}
+.confirm-text{font-size:17px;line-height:1.45;margin-bottom:18px}
+.confirm-title{margin:5px 0 10px;color:#4b5563}
+.confirm-route{font-size:20px;margin:10px 0}
+#confirmOk{width:100%;font-size:18px}

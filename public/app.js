@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.5.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.6.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -39,6 +39,8 @@ async function checkStatus(){
 $('savePin').onclick=()=>{state.pin=$('pin').value.trim();sessionStorage.setItem('appPin',state.pin);checkStatus();};
 $('lookup').addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();findItem();} });
 $('findBtn').onclick=findItem;
+$('openProductBtn').onclick=()=>{const u=$('openProductBtn').dataset.url;if(u)window.open(u,'_blank','noopener');};
+$('openBatchBtn').onclick=()=>{const u=$('openBatchBtn').dataset.url;if(u)window.open(u,'_blank','noopener');};
 
 async function findItem(){
   const code=$('lookup').value.trim(); if(!code) return toast('Scan or enter an item first.','error');
@@ -55,6 +57,11 @@ function showProduct(){
   const sku=p.sku||p.catalogue_sku||p.upc||'—';
   $('sku').textContent=`SKU  ${sku}`;
   $('title').textContent=p.title||'Untitled item';
+  const productBtn=$('openProductBtn'), batchBtn=$('openBatchBtn');
+  const skuForLink=p.sku||p.catalogue_sku||p.upc||'';
+  productBtn.dataset.url=p.sellerchamp_product_url||`https://app.sellerchamp.com/products?sku=${encodeURIComponent(skuForLink)}`;
+  batchBtn.dataset.url=p.sellerchamp_batch_url||'https://app.sellerchamp.com/manifests';
+  productBtn.disabled=!skuForLink;
   $('modeBadge').textContent=p.mode==='catalog'?'Catalog Sync transfer':'Standard SellerChamp location';
   if(p.image){
     $('productImage').src=p.image;
@@ -105,17 +112,29 @@ async function moveItem(){
   if(!all && (!Number.isInteger(qty)||qty<1||qty>source.quantity_available)) return toast('Enter a valid quantity to move.','error');
   busy($('moveBtn'),true,'MOVING…');
   try{
-    const result=await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id,notesProductId:currentProduct.notes_product_id||currentProduct.id,currentRemarks:currentProduct.item_remarks||''})});
+    const result=await api('/api/move',{method:'POST',body:JSON.stringify({mode:currentProduct.mode,productId:currentProduct.id,fromLocation:source.location,toLocation:destination,quantity:qty,allQuantity:all,sourceLocationId:source.id})});
     addHistory({sku:currentProduct.sku||currentProduct.catalogue_sku,title:currentProduct.title,from:source.location,to:destination,qty:all?source.quantity_available:qty,time:new Date().toISOString()});
-    if(result.notes?.warning) toast(`Moved successfully, but Notes update failed: ${result.notes.warning}`,'error');
-    else {
-      const field = result.notes?.notes_field ? ` (${result.notes.notes_field})` : '';
-      toast(`Relocated ${currentProduct.sku||'item'}: ${source.location} → ${destination} · old location replaced · Notes prepended${field}`,'success');
-    }
-    if(state.rapid) clearForNext(); else { $('lookup').value=currentProduct.sku||currentProduct.catalogue_sku||''; await findItem(); }
+    showMoveConfirmation({
+      sku: currentProduct.sku||currentProduct.catalogue_sku||'Item',
+      title: currentProduct.title||'',
+      from: source.location,
+      to: destination,
+      qty: all?source.quantity_available:qty
+    });
   }catch(e){toast(e.message,'error');}
   finally{busy($('moveBtn'),false);}
 }
+
+function showMoveConfirmation(m){
+  $('confirmText').innerHTML=`<div><strong>SKU:</strong> ${escapeHtml(m.sku)}</div>${m.title?`<div class="confirm-title">${escapeHtml(m.title)}</div>`:''}<div class="confirm-route"><strong>${escapeHtml(m.from)}</strong> → <strong>${escapeHtml(m.to)}</strong></div><div>Quantity moved: <strong>${Number(m.qty||0)}</strong></div>`;
+  $('moveConfirm').classList.remove('hidden');
+  setTimeout(()=>$('confirmOk').focus(),0);
+}
+$('confirmOk').onclick=()=>{
+  $('moveConfirm').classList.add('hidden');
+  clearForNext();
+  requestAnimationFrame(()=>$('lookup').focus({preventScroll:false}));
+};
 
 function clearForNext(){currentProduct=null;$('productCard').classList.add('hidden');$('lookup').value='';lookupState='item';$('lookup').focus();}
 $('clearBtn').onclick=clearForNext;

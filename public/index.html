@@ -13,7 +13,7 @@
       <div>
         <div class="eyebrow">Stuff2Sell warehouse tool</div>
         <h1>Location Mover</h1>
-        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.5.0</div>
+        <div id="appVersion" style="font-size:.78rem;opacity:.65;margin-top:-6px">v2.6.0</div>
       </div>
       <div id="connection" class="status neutral">Checking…</div>
     </header>
@@ -46,6 +46,10 @@
         <div>
           <div id="sku" class="sku"></div>
           <h2 id="title"></h2>
+          <div class="sellerchamp-links">
+            <button id="openProductBtn" class="sc-link" type="button">SellerChamp Product</button>
+            <button id="openBatchBtn" class="sc-link secondary-link" type="button">SellerChamp Batch</button>
+          </div>
           <div id="modeBadge" class="badge"></div>
         </div>
       </div>
@@ -94,6 +98,13 @@
       <div id="history" class="history empty">No moves yet.</div>
     </section>
 
+    <div id="moveConfirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modal-card">
+        <h2 id="confirmTitle">Move Complete</h2>
+        <div id="confirmText" class="confirm-text"></div>
+        <button id="confirmOk" class="move" type="button">OK</button>
+      </div>
+    </div>
     <div id="toast" class="toast hidden"></div>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>

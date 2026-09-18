@@ -88,6 +88,8 @@ function normalizeLegacyProduct(p) {
     item_remarks: p.item_remarks || '',
     ebay_item_condition_id: p.ebay_item_condition_id ?? null,
     notes_product_id: p.id,
+    sellerchamp_product_url: `https://app.sellerchamp.com/products?sku=${encodeURIComponent(p.sku || p.custom_catalogue_sku || p.upc || '')}`,
+    sellerchamp_batch_url: p.manifest_id ? `https://app.sellerchamp.com/manifests/${encodeURIComponent(p.manifest_id)}` : `https://app.sellerchamp.com/manifests`,
     locations: (p.inventory_locations || []).map(x => ({
       id: x.id || '',
       location: x.location || '',
@@ -257,7 +259,7 @@ async function lookupLegacy(code) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.5.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.6.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -295,7 +297,7 @@ app.get('/api/lookup', async (req, res) => {
 });
 
 app.post('/api/move', async (req, res) => {
-  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId, notesProductId, currentRemarks } = req.body || {};
+  const { mode, productId, fromLocation, toLocation, quantity, allQuantity, sourceLocationId } = req.body || {};
   if (!productId || !fromLocation || !toLocation) return res.status(400).json({ error: 'Product, source location, and destination location are required.' });
   if (String(fromLocation).trim().toLowerCase() === String(toLocation).trim().toLowerCase()) return res.status(400).json({ error: 'The new location is the same as the current location.' });
 
