@@ -404,7 +404,7 @@ function applyManifestMatch(product, match) {
 app.get('/api/status', async (req, res) => {
   try {
     const data = await scFetch('/api/marketplace_accounts');
-    res.json({ ok: true, version: '2.31.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
+    res.json({ ok: true, version: '2.32.0', pinRequired: !!APP_PIN, accounts: (data.marketplace_accounts || []).map(a => ({ id: a.id, name: a.name, marketplace: a.marketplace })) });
   } catch (e) {
     res.status(e.status || 500).json({ error: 'Could not connect to SellerChamp.', details: e.data || e.message });
   }
@@ -414,29 +414,44 @@ app.get('/api/title-search', async (req,res)=>{
   const q=String(req.query.q||'').trim();
   if(q.length<2)return res.status(400).json({error:'Enter at least 2 characters of the title.'});
   try{
-    const candidates=[];
-    const endpoints=[
-      `/api/products.json?query=${encodeURIComponent(q)}&page=1&page_size=50`,
-      `/api/products.json?title=${encodeURIComponent(q)}&page=1&page_size=50`
-    ];
-    for(const endpoint of endpoints){
+    const needle=q.toLowerCase(), candidates=[], seen=new Set();
+
+    // SellerChamp's Products endpoint does not reliably honor query/title
+    // parameters for partial title text. Scan Products pages and filter titles
+    // ourselves. Stop after enough matches or the end of the Products list.
+    for(let page=1;page<=25 && candidates.length<30;page++){
+      let data;
       try{
-        const data=await scFetch(endpoint);
-        const rows=Array.isArray(data.products)?data.products:[];
-        for(const p of rows){
-          const title=String(p.title||p.product_title||'');
-          if(!title.toLowerCase().includes(q.toLowerCase()))continue;
-          const sku=p.sku||p.catalogue_sku||p.upc||p.asin||'';
-          if(!sku)continue;
-          candidates.push({id:p.id||'',sku,title,image:p.primary_image||p.primary_image_url||p.image_url||p.image||'',quantity_available:Number(p.quantity_available||0)});
-        }
-        if(candidates.length)break;
-      }catch(e){if(![400,404,422].includes(e.status))throw e;}
+        data=await scFetch(`/api/products.json?page=${page}&page_size=100`);
+      }catch(e){
+        if([400,404,422].includes(e.status))break;
+        throw e;
+      }
+      const rows=Array.isArray(data.products)?data.products:[];
+      if(!rows.length)break;
+      for(const p of rows){
+        const title=String(p.title||p.product_title||'');
+        if(!title.toLowerCase().includes(needle))continue;
+        const sku=p.sku||p.custom_catalogue_sku||p.catalogue_sku||p.upc||p.asin||'';
+        if(!sku)continue;
+        const key=String(p.id||sku);
+        if(seen.has(key))continue;
+        seen.add(key);
+        candidates.push({
+          id:p.id||'',sku,title,
+          image:p.primary_image||p.primary_image_url||p.image_url||p.image||
+            p.product_images?.[0]?.large_image_url||p.product_images?.[0]?.image_url||'',
+          quantity_available:Number(p.quantity_available||0)
+        });
+        if(candidates.length>=30)break;
+      }
+      if(rows.length<100)break;
     }
-    const seen=new Set();
-    const results=candidates.filter(x=>{const k=String(x.id||x.sku);if(seen.has(k))return false;seen.add(k);return true;}).slice(0,30);
-    res.json({results});
-  }catch(e){res.status(e.status||500).json({error:'SellerChamp title search failed.',details:e.data||e.message});}
+
+    res.json({results:candidates.slice(0,30)});
+  }catch(e){
+    res.status(e.status||500).json({error:'SellerChamp title search failed.',details:e.data||e.message});
+  }
 });
 
 app.get('/api/lookup', async (req, res) => {
