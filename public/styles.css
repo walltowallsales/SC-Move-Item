@@ -43,3 +43,9 @@
 #qtyModalInput{width:100%;box-sizing:border-box;font-size:1.35rem;padding:12px 14px;margin-top:8px}
 .qty-modal-actions{display:flex;gap:10px;margin-top:16px}
 .qty-modal-actions button{flex:1}
+
+.title-results{margin-top:10px;border:1px solid #d1d5db;border-radius:10px;overflow:hidden;background:#fff}
+.title-results-head{padding:9px 10px;font-size:.82rem;font-weight:800;background:#f3f4f6}
+.title-result{display:flex;width:100%;align-items:center;gap:10px;text-align:left;background:#fff;color:#111827;border:0;border-top:1px solid #e5e7eb;border-radius:0;padding:9px 10px}
+.title-result img{width:48px;height:48px;object-fit:contain;background:#f3f4f6;border-radius:6px;flex:none}
+.title-result span{display:flex;flex-direction:column;min-width:0}.title-result strong{font-size:.9rem}.title-result small{font-size:.78rem;line-height:1.2;margin-top:2px}.title-result em{font-size:.72rem;font-style:normal;font-weight:700;margin-top:3px}

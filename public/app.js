@@ -29,7 +29,7 @@ function busy(btn,on,label) { if(on){btn.dataset.old=btn.textContent;btn.textCon
 async function checkStatus(){
   try{
     const data=await api('/api/status');
-    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.30.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
+    $('connection').textContent='SellerChamp connected'; if($('appVersion')) $('appVersion').textContent='v'+(data.version||'2.31.0'); $('connection').className='status ok'; $('pinCard').classList.add('hidden');
   }catch(e){
     $('connection').textContent=e.message.includes('PIN')?'PIN required':'Not connected'; $('connection').className='status bad';
     if(e.message.includes('PIN')) $('pinCard').classList.remove('hidden');
@@ -50,12 +50,39 @@ $('openBatchBtn').onclick=async()=>{
 
 async function findItem(){
   const code=$('lookup').value.trim(); if(!code) return toast('Scan or enter an item first.','error');
+  $('titleResults').classList.add('hidden');$('titleResults').innerHTML='';
   busy($('findBtn'),true,'Finding…');
   try{
-    const data=await api(`/api/lookup?code=${encodeURIComponent(code)}`); currentProduct=data.product; showProduct();
+    // Preserve the fast exact SKU/UPC/ASIN workflow first.
+    const data=await api(`/api/lookup?code=${encodeURIComponent(code)}`);
+    currentProduct=data.product; showProduct();
     if(state.rapid){ lookupState='destination'; $('toLocation').focus(); toast('Item found. Scan the destination location.'); }
-  }catch(e){currentProduct=null;$('productCard').classList.add('hidden');toast(e.message,'error');}
-  finally{busy($('findBtn'),false);}
+  }catch(exactError){
+    // If exact lookup did not find an item, treat the same field as a title search.
+    try{
+      const data=await api(`/api/title-search?q=${encodeURIComponent(code)}`);
+      if(!data.results?.length)throw exactError;
+      renderTitleResults(data.results);
+    }catch(e){
+      currentProduct=null;$('productCard').classList.add('hidden');toast(e.message||exactError.message,'error');
+    }
+  }finally{busy($('findBtn'),false);}
+}
+
+function renderTitleResults(results){
+  const box=$('titleResults');
+  box.innerHTML=`<div class="title-results-head">${results.length} match${results.length===1?'':'es'} — choose an item</div>`+
+    results.map((p,i)=>`<button type="button" class="title-result" data-i="${i}">
+      ${p.image?`<img src="${escapeHtml(p.image)}" alt="">`:''}
+      <span><strong>${escapeHtml(p.sku)}</strong><small>${escapeHtml(p.title||'Untitled item')}</small>${Number(p.quantity_available||0)?`<em>Qty ${Number(p.quantity_available)}</em>`:''}</span>
+    </button>`).join('');
+  box.classList.remove('hidden');
+  box.querySelectorAll('.title-result').forEach(btn=>btn.onclick=async()=>{
+    const p=results[Number(btn.dataset.i)];
+    $('lookup').value=p.sku;
+    box.classList.add('hidden');
+    await findItem();
+  });
 }
 
 function showProduct(){
